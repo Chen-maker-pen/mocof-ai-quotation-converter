@@ -1,0 +1,6 @@
+{
+  "name": "MOCOF AI Integrated Quotation Converter",
+  "description": "Automated Chinese-to-English customer quotation converter for MOCOF home renovation company with XLSX parsing, AI translation, deterministic rule calculations, exception management, full quotation workspace editor, PDF/XLSX exports, and admin profile management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
