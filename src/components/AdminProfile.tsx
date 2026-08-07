@@ -3,7 +3,7 @@
  */
 
 import React, { useState } from 'react';
-import { ConversionProfile, MappingRule } from '../types.js';
+import { ConversionProfile, MappingRule, AreaPromptRule } from '../types.js';
 import {
   Save,
   Plus,
@@ -30,7 +30,13 @@ export const AdminProfile: React.FC<AdminProfileProps> = ({
     JSON.parse(JSON.stringify(profile))
   );
   const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'company' | 'dictionary' | 'pricing' | 'terms'>('dictionary');
+  const [activeTab, setActiveTab] = useState<'company' | 'dictionary' | 'pricing' | 'terms' | 'automation'>('dictionary');
+
+  const updateAreaPrompt = (index: number, updates: Partial<AreaPromptRule>) => {
+    const areaPromptRules = [...editedProfile.areaPromptRules];
+    areaPromptRules[index] = { ...areaPromptRules[index], ...updates };
+    setEditedProfile({ ...editedProfile, areaPromptRules });
+  };
 
   const handleAddRule = () => {
     const newRule: MappingRule = {
@@ -128,6 +134,17 @@ export const AdminProfile: React.FC<AdminProfileProps> = ({
           }`}
         >
           <ShieldCheck className="w-3.5 h-3.5 inline mr-1.5 text-emerald-400" /> Terms & Conditions
+        </button>
+
+        <button
+          onClick={() => setActiveTab('automation')}
+          className={`px-4 py-2 rounded-lg font-bold transition-all ${
+            activeTab === 'automation'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <Globe className="w-3.5 h-3.5 inline mr-1.5 text-emerald-400" /> Boss Editing Rules
         </button>
       </div>
 
@@ -401,6 +418,60 @@ export const AdminProfile: React.FC<AdminProfileProps> = ({
                     setEditedProfile({ ...editedProfile, termsAndConditions: updated });
                   }}
                   className="flex-1 p-2 border border-gray-300 rounded-lg text-xs"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'automation' && (
+        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-5 text-xs">
+          <div>
+            <h3 className="font-bold text-base text-[#0f382c]">Automatic Google-Sheets Editing Rules</h3>
+            <p className="text-gray-500 mt-1">
+              These rules are sent to Gemini on every raw Chinese quotation conversion. The original workbook remains unchanged.
+            </p>
+          </div>
+
+          <div>
+            <label className="block font-semibold text-gray-700 mb-1.5">Shared MOCOF rules</label>
+            <textarea
+              value={editedProfile.bossEditingRules}
+              onChange={(e) => setEditedProfile({ ...editedProfile, bossEditingRules: e.target.value })}
+              rows={14}
+              className="w-full p-3 border border-gray-300 rounded-lg leading-relaxed font-mono text-[11px]"
+            />
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <h4 className="font-bold text-[#0f382c]">Area 1–10 differences</h4>
+              <p className="text-gray-500 mt-0.5">Paste the boss’s specific row layout or formula changes into the correct area. Areas without a confirmed difference remain safe and require review when ambiguous.</p>
+            </div>
+            {editedProfile.areaPromptRules.map((areaRule, index) => (
+              <div key={areaRule.areaNumber} className="border border-slate-200 rounded-lg p-3 bg-slate-50/60">
+                <div className="grid sm:grid-cols-[72px_1fr] gap-2 mb-2">
+                  <input
+                    type="number"
+                    value={areaRule.areaNumber}
+                    onChange={(e) => updateAreaPrompt(index, { areaNumber: Number(e.target.value) })}
+                    className="p-2 border border-gray-300 rounded font-bold"
+                    aria-label="Area number"
+                  />
+                  <input
+                    value={areaRule.label}
+                    onChange={(e) => updateAreaPrompt(index, { label: e.target.value })}
+                    className="p-2 border border-gray-300 rounded font-semibold"
+                    aria-label="Area label"
+                  />
+                </div>
+                <textarea
+                  value={areaRule.instructions}
+                  onChange={(e) => updateAreaPrompt(index, { instructions: e.target.value })}
+                  rows={3}
+                  className="w-full p-2 border border-gray-300 rounded leading-relaxed"
+                  aria-label={`Area ${areaRule.areaNumber} instructions`}
                 />
               </div>
             ))}

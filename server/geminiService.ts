@@ -47,6 +47,14 @@ export async function processAiExtractionAndConversion(
       action: 'EXTRACT_AND_CONVERT',
       company: profile.companyName,
       rules: profile.rules,
+      bossEditingRules: profile.bossEditingRules,
+      areaPromptRules: profile.areaPromptRules,
+      instructionPriority: [
+        'Preserve source facts and embedded photos',
+        'Apply shared boss editing rules',
+        'Apply the one area rule that matches the worksheet layout',
+        'Flag ambiguity for boss review instead of guessing',
+      ],
       sourceDataSample: rawChineseRows.slice(0, 30),
     };
 
@@ -54,7 +62,7 @@ export async function processAiExtractionAndConversion(
       model: 'gemini-3.6-flash',
       contents: JSON.stringify(jsonPrompt),
       config: {
-        systemInstruction: `${EXTRACTOR_SYSTEM_PROMPT}\n\n${CONVERSION_SYSTEM_PROMPT}`,
+        systemInstruction: `${EXTRACTOR_SYSTEM_PROMPT}\n\n${CONVERSION_SYSTEM_PROMPT}\n\nThe supplied bossEditingRules and areaPromptRules are mandatory. Identify the matching area from worksheet headings and table row boundaries. If the area is unknown or its custom rules are awaiting confirmation, apply only the shared rules and return an exception describing the missing area layout.`,
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,

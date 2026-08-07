@@ -205,6 +205,17 @@ export interface MappingRule {
   priceMultiplierOverride?: number;
 }
 
+/**
+ * A boss-approved instruction set for one quotation layout / area.
+ * The instruction remains editable in the app because supplier templates can
+ * have different row positions even when their business rules are identical.
+ */
+export interface AreaPromptRule {
+  areaNumber: number;
+  label: string;
+  instructions: string;
+}
+
 export interface ConversionProfile {
   companyName: string;
   companyAddress: string;
@@ -221,6 +232,10 @@ export interface ConversionProfile {
   termsAndConditions: string[];
   outputWorksheetNames: string[];
   rules: MappingRule[];
+  /** Shared Google-Sheets editing instructions applied to every conversion. */
+  bossEditingRules: string;
+  /** Area-specific additions and row-position differences. */
+  areaPromptRules: AreaPromptRule[];
 }
 
 export interface QuoteVersion {

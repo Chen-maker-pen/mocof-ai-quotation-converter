@@ -13,6 +13,39 @@ import {
   AuditLog,
 } from '../src/types.js';
 
+const BOSS_EDITING_RULES = `
+Apply MOCOF Prompt Documentation rules in this order. Preserve the original Chinese workbook, source values and embedded product photos; create a customer-facing English version only.
+
+1. Create the Whole House Total table: title “MOCOF Whole House Quotation”, customer name/address/sqft details, MYR currency, RM49,800 and RM79,800 package columns, software/before/after price columns, sequential numbering, totals and discount percentage.
+2. Add Whole House extras: Extra m², Curve, Wall Panel, Aluminium Frame, Add-on finishing and (only where the area instructions require it) Deduct Design Fee. Package formulas are: RM49,800 Extra m² = (Cabinet Total − 20) × 1999; RM79,800 Extra m² = (Cabinet Total − 24) × 1999; RM79,800 Wall Panel = (Wall Panel Total − 6) × 650. Deduct Design Fee tiers are: sqft ≤1500 = −1500; 1501–2000 = −2000; 2001–2500 = −3500; 2501–3000 = −6000. Never apply a design fee where the area rule says it is not required.
+3. Create the Supplementary table with its 14 approved service rows: Defect Check before start work; 3D & 2D design and submission; Project management; Post reno cleaning; Floor Protection (Floor guard); Electrical; Plaster ceiling; Painting with white paint; Paint with 3 colour Nippon colors; Partition (normal w/o sound proof); Curtain with Blind per window H 8–9ft; Hacking & Removal; Grout; Mirror. Use quantities/per values 1, 5, 6, 1, 1, 19, 10, 9, 12, 24, 43, 77, 6.5, 50. Before price is sqft/per × customer RM/sqft, after price is before price × 80%, and the first five after-price rows are 0. Create totals and the Whole House plus Supplementary grand total. Highlight the lowest package total in green.
+4. Translate customer-facing headings and labels exactly: Whole House Total, Supplementary, Cabinet Total Price, Accessories Total Price, Product PIC, Combi, Name, Model, WDH, Qty, Software Price, Before Price, After Price, Handle by, Customer Signature, Date. Keep Chinese room names and append approved English room names.
+5. Translate room names: Guest Bedroom, Study Room, Living and Dining Room, Foyer, Master Bedroom, Kitchen, Multipurpose Room and Kids Room. Translate product families: 23 System Cabinet, 25 Kitchen Cabinet, Background Wall Panel and New Product.
+6. Link room subtotals into Whole House Total. Preserve all source images and attach each original product image to its corresponding customer-facing item. Do not fabricate missing images, dimensions, prices, quantity, exchange rate or totals; flag them for review.
+7. Create M&E Work and Curtain sections when present, retain the quotation remarks/terms in English and Chinese, and remove rows labelled 活动金额优惠价.
+8. Use formulas rather than hard-coded values for totals, converted before price, discounted after price and pricing comparisons. Do not overwrite a formula with a number. Keep the workbook editable like Google Sheets.
+9. Use Malaysian Ringgit formatting (RM) in every customer price and total. The live or project-locked exchange rate is authoritative; do not assume a rate from the source workbook.
+10. Apply area-specific instructions after these shared rules. When an instruction conflicts with the source layout, preserve data and create a review exception instead of guessing.
+`.trim();
+
+const DEFAULT_AREA_PROMPT_RULES = [
+  {
+    areaNumber: 1,
+    label: 'Area 1 — standard 13-row Whole House layout',
+    instructions: 'Use the Area 1 row layout from the documentation: Whole House rows 7–13, total row 14, Supplementary heading row 16, supplementary headings row 17, supplementary items rows 18–31, and total rows 32–33. Deduct Design Fee is listed in the template; do not apply it when the project instruction says it is not required.',
+  },
+  {
+    areaNumber: 2,
+    label: 'Area 2 — standard 14-row Whole House layout',
+    instructions: 'Use the Area 2 row layout from the documentation: Whole House rows 7–14, Supplementary heading row 17, supplementary headings row 18, supplementary items rows 19–32, and total rows 33–34. Use the area-specific package formulas and sqft-tier Deduct Design Fee cells at row 14.',
+  },
+  ...Array.from({ length: 8 }, (_, index) => ({
+    areaNumber: index + 3,
+    label: `Area ${index + 3} — awaiting boss row-layout differences`,
+    instructions: 'Apply the shared MOCOF rules. Do not assume row positions from Area 1 or Area 2; infer the existing table boundaries, preserve all source data, and flag any ambiguous structural change for boss review.',
+  })),
+];
+
 export const DEFAULT_CONVERSION_PROFILE: ConversionProfile = {
   companyName: 'MOCOF SDN BHD',
   companyAddress: 'No. 18, Jalan Industrial 3, Kawasan Perindustrian, 40150 Shah Alam, Selangor, Malaysia',
@@ -41,6 +74,8 @@ export const DEFAULT_CONVERSION_PROFILE: ConversionProfile = {
     'Kitchen and Vanity Details',
     'LF Details'
   ],
+  bossEditingRules: BOSS_EDITING_RULES,
+  areaPromptRules: DEFAULT_AREA_PROMPT_RULES,
   rules: [
     { id: 'rule-1', chineseTerm: '橱柜', englishTranslation: 'Kitchen Cabinet', category: 'cabinet', roomNameDefault: 'Kitchen', hideByDefault: false },
     { id: 'rule-2', chineseTerm: '吊柜', englishTranslation: 'Wall Cabinet', category: 'cabinet', roomNameDefault: 'Kitchen', hideByDefault: false },

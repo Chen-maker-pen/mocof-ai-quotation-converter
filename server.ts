@@ -22,9 +22,12 @@ import { Project, Quote, QuoteVersion } from './src/types.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-async function startServer() {
+/**
+ * Creates the API application for both local development and Vercel.
+ * Keep API routes here; static frontend hosting is added only by startServer.
+ */
+export async function createApp() {
   const app = express();
-  const PORT = 3000;
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -157,8 +160,13 @@ async function startServer() {
       }
 
       // Step: Run Gemini AI Translation & Conversion
-      const sampleRows = parsedXlsx.rawRowsBySheet[parsedXlsx.sheetNames[0]] || [];
-      const aiResult = await processAiExtractionAndConversion(sampleRows, profile);
+      // Give Gemini every supplier worksheet, not only the first summary sheet.
+      // Area-specific rules select the matching layout from headings/row boundaries.
+      const allSourceRows = parsedXlsx.sheetNames.flatMap((sheetName) => [
+        [`__MOCOF_SOURCE_SHEET__: ${sheetName}`],
+        ...(parsedXlsx.rawRowsBySheet[sheetName] || []),
+      ]);
+      const aiResult = await processAiExtractionAndConversion(allSourceRows, profile);
 
       // Step: Recalculate Worksheets using Deterministic Integer Math
       const exchangeRateValue = quote.exchangeRate.rate || 0.652;
@@ -482,7 +490,15 @@ async function startServer() {
     res.json({ success: true, message: 'Database reset to seed state' });
   });
 
-  // Vite middleware for development vs static serve for production
+  return app;
+}
+
+async function startServer() {
+  const app = await createApp();
+  const PORT = 3000;
+
+  // Vite middleware for development vs static serve for production.
+  // This is intentionally local-only; Vercel serves dist and api/index.ts.
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -502,4 +518,6 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}

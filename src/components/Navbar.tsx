@@ -7,6 +7,7 @@ import {
   UploadCloud,
   Layers,
   Edit3,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -90,6 +91,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Edit3 className="w-4 h-4" />
               <span className="hidden sm:inline">Full Editor</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('admin')}
+              className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'admin'
+                  ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-950/40'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+              title="Boss Editing Rules"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              <span className="hidden lg:inline">Rules</span>
             </button>
 
           </nav>

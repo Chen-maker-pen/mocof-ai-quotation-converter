@@ -57,7 +57,18 @@ class Database {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
         if (parsed.projects && parsed.quotes) {
-          this.data = parsed;
+          // Migrate existing local profiles when a new version adds default rules.
+          this.data = {
+            ...parsed,
+            conversionProfile: {
+              ...DEFAULT_CONVERSION_PROFILE,
+              ...parsed.conversionProfile,
+              areaPromptRules:
+                parsed.conversionProfile?.areaPromptRules?.length > 0
+                  ? parsed.conversionProfile.areaPromptRules
+                  : DEFAULT_CONVERSION_PROFILE.areaPromptRules,
+            },
+          };
         }
       } else {
         this.saveToDisk();
