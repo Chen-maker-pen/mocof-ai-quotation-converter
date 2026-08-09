@@ -16,8 +16,11 @@ import {
 const BOSS_EDITING_RULES = `
 Apply MOCOF Prompt Documentation rules in this order. Preserve the original Chinese workbook, source values and embedded product photos; create a customer-facing English version only.
 
-1. Create the Whole House Total table: title “MOCOF Whole House Quotation”, customer name/address/sqft details, MYR currency, RM49,800 and RM79,800 package columns, software/before/after price columns, sequential numbering, totals and discount percentage.
-2. Add Whole House extras: Extra m², Curve, Wall Panel, Aluminium Frame, Add-on finishing and (only where the area instructions require it) Deduct Design Fee. Package formulas are: RM49,800 Extra m² = (Cabinet Total − 20) × 1999; RM79,800 Extra m² = (Cabinet Total − 24) × 1999; RM79,800 Wall Panel = (Wall Panel Total − 6) × 650. Deduct Design Fee tiers are: sqft ≤1500 = −1500; 1501–2000 = −2000; 2001–2500 = −3500; 2501–3000 = −6000. Never apply a design fee where the area rule says it is not required.
+1. Determine the Area number from the number of real room/space rows only. A room/space is a customer location such as Master Bedroom, Living & Dining, Vanity, Kitchen, Foyer or Study. Do NOT count Extra m², Curve, Wall Panel, Aluminium Frame, Add-on Finishing, Wall Bed, Pull-out Mechanism, doors, windows, grill doors, island, special offer, discount or any other service/add-on as an area. For example: Master Bedroom + Living & Dining + Vanity is Area 3. Put all service/add-on rows after the real room rows.
+2. Create one long editable Google-Sheets-style customer workbook sheet. It must include every required table in this fixed order: (a) customer header and Whole House Total; (b) Supplementary; (c) the complete item tables for every detected real room/space, in the same order as Whole House Total; (d) bilingual remarks and signature area. Never create a customer output that contains only Whole House Total.
+3. For Area 3, the same sheet must therefore show: Whole House Total → Supplementary → Master Bedroom tables → Living Dining tables → Vanity tables. For every other Area number, replace these room names with all detected real rooms, preserving their order. Each room must include its Cabinet, Accessories and applicable Wall Panel/LF/Kitchen/Vanity tables and subtotals.
+4. Create the Whole House Total table: title “MOCOF Whole House Quotation”, customer name/address/sqft details, MYR currency, RM49,800 and RM79,800 package columns, software/before/after price columns, sequential numbering, totals and discount percentage. Show the real room rows first, followed by the MOCOF services/add-ons section.
+5. Add Whole House extras: Extra m², Curve, Wall Panel, Aluminium Frame, Add-on finishing and (only where the area instructions require it) Deduct Design Fee. Package formulas are: RM49,800 Extra m² = (Cabinet Total − 20) × 1999; RM79,800 Extra m² = (Cabinet Total − 24) × 1999; RM79,800 Wall Panel = (Wall Panel Total − 6) × 650. Deduct Design Fee tiers are: sqft ≤1500 = −1500; 1501–2000 = −2000; 2001–2500 = −3500; 2501–3000 = −6000. Never apply a design fee where the area rule says it is not required.
 3. Create the Supplementary table with its 14 approved service rows: Defect Check before start work; 3D & 2D design and submission; Project management; Post reno cleaning; Floor Protection (Floor guard); Electrical; Plaster ceiling; Painting with white paint; Paint with 3 colour Nippon colors; Partition (normal w/o sound proof); Curtain with Blind per window H 8–9ft; Hacking & Removal; Grout; Mirror. Use quantities/per values 1, 5, 6, 1, 1, 19, 10, 9, 12, 24, 43, 77, 6.5, 50. Before price is sqft/per × customer RM/sqft, after price is before price × 80%, and the first five after-price rows are 0. Create totals and the Whole House plus Supplementary grand total. Highlight the lowest package total in green.
 4. Translate customer-facing headings and labels exactly: Whole House Total, Supplementary, Cabinet Total Price, Accessories Total Price, Product PIC, Combi, Name, Model, WDH, Qty, Software Price, Before Price, After Price, Handle by, Customer Signature, Date. Keep Chinese room names and append approved English room names.
 5. Translate room names: Guest Bedroom, Study Room, Living and Dining Room, Foyer, Master Bedroom, Kitchen, Multipurpose Room and Kids Room. Translate product families: 23 System Cabinet, 25 Kitchen Cabinet, Background Wall Panel and New Product.
@@ -28,23 +31,77 @@ Apply MOCOF Prompt Documentation rules in this order. Preserve the original Chin
 10. Apply area-specific instructions after these shared rules. When an instruction conflicts with the source layout, preserve data and create a review exception instead of guessing.
 `.trim();
 
-const DEFAULT_AREA_PROMPT_RULES = [
-  {
-    areaNumber: 1,
-    label: 'Area 1 — standard 13-row Whole House layout',
-    instructions: 'Use the Area 1 row layout from the documentation: Whole House rows 7–13, total row 14, Supplementary heading row 16, supplementary headings row 17, supplementary items rows 18–31, and total rows 32–33. Deduct Design Fee is listed in the template; do not apply it when the project instruction says it is not required.',
-  },
-  {
-    areaNumber: 2,
-    label: 'Area 2 — standard 14-row Whole House layout',
-    instructions: 'Use the Area 2 row layout from the documentation: Whole House rows 7–14, Supplementary heading row 17, supplementary headings row 18, supplementary items rows 19–32, and total rows 33–34. Use the area-specific package formulas and sqft-tier Deduct Design Fee cells at row 14.',
-  },
-  ...Array.from({ length: 8 }, (_, index) => ({
-    areaNumber: index + 3,
-    label: `Area ${index + 3} — awaiting boss row-layout differences`,
-    instructions: 'Apply the shared MOCOF rules. Do not assume row positions from Area 1 or Area 2; infer the existing table boundaries, preserve all source data, and flag any ambiguous structural change for boss review.',
-  })),
-];
+/**
+ * This is the complete rule sequence from the MOCOF Prompt Documentation.
+ * The original Google-Sheets prompts use different row numbers for each Area.
+ * We generate those coordinates from the detected number of genuine rooms so
+ * the same complete sequence is applied to Area 1 through Area 10.
+ */
+const buildDocumentedAreaPrompts = (areaNumber: number): string[] => {
+  const extrasStart = 7 + areaNumber;
+  const designFeeRow = extrasStart + 5;
+  const wholeHouseTotalRow = extrasStart + 6;
+  const supplementaryTitleRow = wholeHouseTotalRow + 2;
+  const supplementaryHeaderRow = supplementaryTitleRow + 1;
+  const supplementaryStartRow = supplementaryHeaderRow + 1;
+  const supplementaryEndRow = supplementaryStartRow + 13;
+  const supplementaryTotalRow = supplementaryEndRow + 1;
+  const grandTotalRow = supplementaryTotalRow + 1;
+
+  return [
+    `CHANGE THE TOP HEADINGS PROMPT: Copy all content from Column H to Column I and Column J, from top to bottom. Update E1 to “MOCOF Whole House Quotation”. Replace 全屋汇总 with “Whole House Total”.`,
+    `CHANGE THE TITLE PROMPT: Rename the Whole House headings to No., Space, Wall Panel (m²), Cabinet (m²), RM49800, RM79800, Software Price, Before Price and After Price.`,
+    `FILL IN THE CUSTOMER DETAILS: Rename E2:E4 to Customer Name, Address and Sqft. Fill F2, F3 and F4 with editable customer values. Clear G2:J4, then insert Currency/exchange rate, Budget/customer budget and RM/sqft.`,
+    `ADD THE DISCOUNT PERCENTAGE: Insert 90% at I2, as scientific and 2 decimal places.`,
+    `CLEAR THE CONTENT: Clear package-input contents for the ${areaNumber} source room rows only. Preserve the product data, source values and embedded photographs.`,
+    `INSERT EXTRA: Insert six rows after row ${extrasStart - 1}. Add Extra m2, Curve, Wall Panel, Aluminium Frame, Add-on finishing and Deduct Design fee.`,
+    `ADD THE SERIAL NUMBER FOR WHOLE HOUSE TOTAL TABLE: Add serial numbers from A7 through “Deduct Design fee”, with the ${areaNumber} real rooms first.`,
+    `CREATE TOTAL PRICE FOR WHOLE HOUSE TOTAL TABLE: At row ${wholeHouseTotalRow}, create totals for Wall Panel, Cabinet, RM49800, RM79800, Software Price, Before Price and After Price. RM49800 and RM79800 include their package base price.`,
+    `APPLY THE PACKAGES FORMULA: In F${extrasStart}, use (Cabinet Total − 20) × 1999. In G${extrasStart}, use (Cabinet Total − 24) × 1999.`,
+    `APPLY THE WALL PANEL FORMULA: In G${extrasStart + 2}, use (Wall Panel Total − 6) × 650.`,
+    `ADD THE DEDUCT DESIGN FEE FORMULA: At row ${designFeeRow}, use −1500 for sqft ≤1500; −2000 for 1501–2000; −3500 for 2001–2500; −6000 for 2501–3000. Do not use it where the project does not require it.`,
+    `CURRENCY: Apply RM currency formatting to every package, Software Price, Before Price, After Price and total.`,
+    `SUPPLEMENTARY TABLE: Insert “Supplementary” at A${supplementaryTitleRow}.`,
+    `INSERT THE TEXT: At row ${supplementaryHeaderRow}, insert No., Name, sqft / per, Qty / per, RM49800, RM79800, Software Price, Before Price and After Price.`,
+    `ADD THE NAME OF CONTENT: Starting from B${supplementaryStartRow}, add Defect Check before start work; 3D & 2D design and submission; Project management; Post reno cleaning; Floor Protection (Floor guard); Electrical; Plaster ceiling; Painting with white paint; Paint with 3 colour Nippon colors; Partition (normal w/o sound proof); Curtain with Blind per window H 8–9ft; Hacking & Removal; Grout; Mirror.`,
+    `ADD THE SERIAL NUMBER FOR SUPPLEMENTARY TABLE: Number A${supplementaryStartRow}:A${supplementaryEndRow} from 1 to 14. Insert 80% at I3, as scientific and 2 decimal places.`,
+    `INSERT THE CONTENT AND FORMULA: Use 1, 5, 6, 1, 1, 19, 10, 9, 12, 24, 43, 77, 6.5, 50 for sqft/per. Qty/per is editable. Before Price = sqft/per × RM/sqft. After Price = Before Price × I3.`,
+    `RM49800 & RM79800 = AFTER PRICE: Column F and Column G mirror After Price. Set the first five Supplementary After Price values to 0.`,
+    `CREATE TOTAL PRICE FOR SUPPLEMENTARY TABLE: At row ${supplementaryTotalRow}, insert “Total Supplementary” and total F${supplementaryStartRow}:J${supplementaryEndRow}.`,
+    `CREATE TOTAL WHOLE HOUSE PRICE WITH SUPPLEMENTARY ITEMS: At row ${grandTotalRow}, add Whole House Total plus Total Supplementary in every applicable price column.`,
+    `INSERT THE UNIT/PRICE FOR PRICE REASONABLENESS REVIEW: Calculate price per sqft using the lowest valid completed package total divided by sqft.`,
+    `HIGHLIGHT THE CHEAPEST PRICE: Compare the completed package totals and highlight the lowest valid total in green.`,
+    `24. M&E AND CURTAIN TABLES: When present in source, preserve/create M&E Work and Curtain tables with No., Name, Model and Qty columns.`,
+    `25. M&E CONTENT: Retain the documented Electrical and Plaster work scope, including plaster ceiling, lighting points, eyeball fittings, Osram LED T5, switches/doorbell, fan/light relocation and related accessories.`,
+    `26. CURTAIN CONTENT: Retain the documented curtain scope for living room, master bedroom and small room, including Dimmer collection and sheer material specifications.`,
+    `27. M&E/CURTAIN QUANTITY: Set documented scope quantities to 1 unless the source specifies a different confirmed quantity.`,
+    `28. TRANSLATE TOTAL LABELS: 柜体合计 → Cabinet Total Price; 配套品合计 → Accessories Total Price; 合计 → Total Price.`,
+    `29. TRANSLATE SMALL TABLES: 柜体表 → Cabinet Table; 配套品表 → Accessories Table.`,
+    `30. TRANSLATE ROOM HEADINGS: 客卧房 → Guest Bedroom; 书房 → Study Room; 客餐厅 → Living and Dining Room; 门厅 → Foyer; 主卧房 → Master Bedroom; 厨房 → Kitchen; 多功能空间 → Multipurpose Room; 儿童房 → Kids Room. Show bilingual text where it improves auditability.`,
+    `31. TRANSLATE COLUMN HEADINGS: 序号 → No.; 产品图片 → Product PIC; 组合 → Combi; 名称 → Name; 型号 → Model; 宽深高 → WDH; 数量 → Qty; 单价 → Before Price.`,
+    `32. TRANSLATE PRODUCT FAMILIES: 23系统柜 → 23 System Cabinet; 25厨柜 → 25 Kitchen Cabinet; 美家背景墙 → Background Wall Panel; 新居产品 → New Product.`,
+    `33. TRANSLATE FINAL LABELS: 经手人 → Handle by; 顾客签名 → Customer Signature; 日期 → Date.`,
+    `34. LINK ROOM TOTALS: Link every detected room subtotal back to its Whole House row. Create Cabinet Total Price and Accessories Total Price formulas from the actual room-table rows; never replace a formula with a hard-coded amount.`,
+    `35. BEFORE-PRICE CONVERSION: For each numeric detailed-row Software Price, calculate Before Price from the locked exchange rate. Keep heading cells as text and leave blank source values blank.`,
+    `36. AFTER-PRICE DISCOUNT: For each numeric detailed-row Before Price, calculate After Price using the 90% customer discount. Keep heading cells as text and leave blank source values blank.`,
+    `37. PRICE LABELS: In detailed tables, name H as Software Price, I as Before Price and J as After Price; run these renames before applying conversions and discounts.`,
+    `38. LOGO AND MERGES: Retain the MOCOF logo/header area and preserve required horizontal/vertical merged cells without deleting source photos.`,
+    `39. REMARKS: Include the documented bilingual quotation-validity, specifications, custom-production and material-grade terms, plus Customer Signature and Date.`,
+    `40. REMOVE PROMOTION ROWS: Delete or hide rows labelled 活动金额优惠价 from the customer-facing quotation; retain them in the immutable source for audit.`,
+    `41. EDITABILITY: The generated customer workbook must remain editable like Google Sheets. Formulas, values, descriptions, quantities and prices must be inspectable before export.`,
+    `42. PHOTO PRESERVATION: Reuse each original product photo with its corresponding item. Do not fabricate a replacement photo; flag a missing image for review.`,
+    `43. SAFETY CHECK: If a documented coordinate conflicts with the uploaded supplier layout, preserve the source data, apply the semantic rule in the generated customer layout and create a review exception instead of inventing data.`,
+  ];
+};
+
+const DEFAULT_AREA_PROMPT_RULES = Array.from({ length: 10 }, (_, index) => {
+  const areaNumber = index + 1;
+  return {
+    areaNumber,
+    label: `Area ${areaNumber} — ${areaNumber} real room${areaNumber === 1 ? '' : 's'} only — 43 documented prompts`,
+    instructions: buildDocumentedAreaPrompts(areaNumber).join('\n'),
+  };
+});
 
 export const DEFAULT_CONVERSION_PROFILE: ConversionProfile = {
   companyName: 'MOCOF SDN BHD',

@@ -10,7 +10,7 @@ import multer from 'multer';
 import { createServer as createViteServer } from 'vite';
 import { db } from './server/db.js';
 import { fetchLiveExchangeRates, lockRateSnapshot, createRateSnapshot } from './server/exchange.js';
-import { parseSupplierXlsxBuffer } from './server/xlsxParser.ts';
+import { parseSupplierXlsxBuffer, parseSupplierPdfBuffer } from './server/xlsxParser.ts';
 import { processAiExtractionAndConversion } from './server/geminiService.js';
 import {
   recalculateWorksheet,
@@ -21,6 +21,109 @@ import { generateCustomerXlsx, generateCustomerPdf } from './server/exporter.js'
 import { Project, Quote, QuoteVersion } from './src/types.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
+
+async function convertSupplierWorkbook(quote: Quote, originalFileName: string, buffer: Buffer) {
+  const project = db.getProjectById(quote.projectId);
+  const profile = db.getConversionProfile();
+  const isPdf = /\.pdf$/i.test(originalFileName) || buffer.subarray(0, 4).toString() === '%PDF';
+  const parsedXlsx = isPdf
+    ? await parseSupplierPdfBuffer(buffer, originalFileName)
+    : await parseSupplierXlsxBuffer(buffer, originalFileName);
+
+  // Give Gemini a compact row for every customer-facing product. This avoids
+  // the former first-30-row limit that left most Chinese descriptions untranslated.
+  const translationRows = parsedXlsx.parsedWorksheets.flatMap((worksheet) =>
+    worksheet.rooms.flatMap((room) => room.sections.flatMap((section) =>
+      section.items.map((item) => [item.sourceRowIndex, item.itemCode, item.nameChinese, room.roomNameChinese, section.sectionName, item.dimensionText])
+    ))
+  );
+  const aiResult = await processAiExtractionAndConversion(translationRows, profile, parsedXlsx.detectedArea);
+  // Gemini supplies English names for recognised source SKUs. The parser keeps
+  // the original Chinese source row as the fallback, never a demo placeholder.
+  const translationsBySku = new Map(
+    aiResult.translatedItems
+      .filter((item) => item.itemCode && item.nameEnglish)
+      .map((item) => [String(item.itemCode).trim(), item])
+  );
+  parsedXlsx.parsedWorksheets.forEach((worksheet) => worksheet.rooms.forEach((room) =>
+    room.sections.forEach((section) => section.items.forEach((item) => {
+      const translated = translationsBySku.get(item.itemCode.trim());
+      if (translated?.nameEnglish) item.nameEnglish = translated.nameEnglish;
+      if (translated?.notes) item.notes = translated.notes;
+    }))
+  ));
+  const exchangeRateValue = quote.exchangeRate.rate || 0.652;
+  const updatedWorksheets = parsedXlsx.parsedWorksheets.map((ws) =>
+    recalculateWorksheet(ws, exchangeRateValue, profile)
+  );
+  // Use the supplementary table parsed from this upload when calculating the
+  // quote total. Previously this happened afterwards, so a new conversion
+  // displayed the new rows but used the previous quote's supplementary total.
+  quote.supplementaryItems = parsedXlsx.supplementaryItems;
+  const wholeHouseTotals = calculateWholeHouseTotals(
+    updatedWorksheets,
+    quote.supplementaryItems,
+    profile,
+    parsedXlsx.totalSupplierCNY,
+    exchangeRateValue
+  );
+
+  aiResult.exceptions.forEach((ex, idx) => {
+    db.addException({
+      id: `exc-${Date.now()}-${idx}`,
+      quoteId: quote.id,
+      sourceRow: ex.sourceRow || idx + 1,
+      sourceSheet: parsedXlsx.sheetNames[0],
+      productCode: ex.productCode || `SKU-${idx + 1}`,
+      chineseText: ex.chineseText || '需要复核的供应商项目',
+      reasonCode: (ex.reasonCode as any) || 'UNAPPROVED_TRANSLATION',
+      description: ex.description || 'AI flag: Requires manager verification',
+      severity: 'warning',
+      resolved: false,
+      suggestedFix: ex.suggestedFix,
+    });
+  });
+
+  const hasExceptions = aiResult.exceptions.length > 0;
+  quote.worksheets = updatedWorksheets;
+  quote.detectedArea = parsedXlsx.detectedArea || undefined;
+  // Keep a clean, source-derived customer workbook. The Prompt Recipe editor
+  // always starts from this baseline, so removing a boss command restores the
+  // table instead of stacking irreversible edits on top of an old version.
+  quote.bossPromptCommands = [];
+  quote.promptRecipeBaseline = {
+    worksheets: JSON.parse(JSON.stringify(updatedWorksheets)),
+    supplementaryItems: JSON.parse(JSON.stringify(parsedXlsx.supplementaryItems)),
+  };
+  const selectedAreaRule = profile.areaPromptRules.find((rule) => rule.areaNumber === parsedXlsx.detectedArea);
+  quote.promptTrace = [
+    `Detected Area ${parsedXlsx.detectedArea || 'not determined'} from ${parsedXlsx.sheetNames[0] || 'source workbook'}: only real room rows were counted; services/add-ons were excluded.`,
+    `Quotation document applied: ${selectedAreaRule?.label || 'Shared MOCOF rules only'}. The entries below are the selected Area’s quotation-document prompts.`,
+    ...(selectedAreaRule ? selectedAreaRule.instructions.split(/\n+/).map((line) => line.trim()).filter(Boolean) : []),
+  ];
+  quote.wholeHouseTotals = wholeHouseTotals;
+  quote.status = hasExceptions ? 'Generated – Exceptions Need Review' : 'Generated – Ready for Approval';
+  quote.updatedAt = new Date().toISOString();
+  db.saveQuote(quote);
+  if (project) {
+    db.updateProject(project.id, { status: quote.status, totalMYRCents: wholeHouseTotals.grandTotalCents });
+  }
+  db.addAuditLog({
+    projectId: quote.projectId,
+    quoteId: quote.id,
+    action: 'CONVERSION_COMPLETED',
+    performedBy: 'MOCOF AI Converter',
+    details: `Parsed ${parsedXlsx.sheetNames.length} worksheets from ${originalFileName}. Generated customer quote with ${aiResult.exceptions.length} exception flags.`,
+  });
+
+  return {
+    project: project ? db.getProjectById(project.id) : undefined,
+    quote,
+    parsedSheetNames: parsedXlsx.sheetNames,
+    extractedImageCount: parsedXlsx.extractedImages.length,
+    exceptions: db.getExceptionsByQuoteId(quote.id),
+  };
+}
 
 /**
  * Creates the API application for both local development and Vercel.
@@ -144,96 +247,45 @@ export async function createApp() {
         return res.status(404).json({ error: 'Quote not found' });
       }
 
-      const project = db.getProjectById(quote.projectId);
-      const profile = db.getConversionProfile();
-
-      let parsedXlsx;
-      let originalFileName = 'Supplier_CN_Quote.xlsx';
-
-      if (req.file) {
-        originalFileName = req.file.originalname;
-        parsedXlsx = await parseSupplierXlsxBuffer(req.file.buffer, originalFileName);
-      } else {
+      if (!req.file) {
         return res.status(400).json({
           error: 'Please choose the original Chinese supplier XLSX file before starting conversion.',
         });
       }
-
-      // Step: Run Gemini AI Translation & Conversion
-      // Give Gemini every supplier worksheet, not only the first summary sheet.
-      // Area-specific rules select the matching layout from headings/row boundaries.
-      const allSourceRows = parsedXlsx.sheetNames.flatMap((sheetName) => [
-        [`__MOCOF_SOURCE_SHEET__: ${sheetName}`],
-        ...(parsedXlsx.rawRowsBySheet[sheetName] || []),
-      ]);
-      const aiResult = await processAiExtractionAndConversion(allSourceRows, profile);
-
-      // Step: Recalculate Worksheets using Deterministic Integer Math
-      const exchangeRateValue = quote.exchangeRate.rate || 0.652;
-      const updatedWorksheets = parsedXlsx.parsedWorksheets.map((ws) =>
-        recalculateWorksheet(ws, exchangeRateValue, profile)
-      );
-
-      // Whole house totals & supplementary items
-      const wholeHouseTotals = calculateWholeHouseTotals(
-        updatedWorksheets,
-        quote.supplementaryItems,
-        profile,
-        parsedXlsx.totalSupplierCNY,
-        exchangeRateValue
-      );
-
-      // Register exceptions
-      aiResult.exceptions.forEach((ex, idx) => {
-        db.addException({
-          id: `exc-${Date.now()}-${idx}`,
-          quoteId: quote.id,
-          sourceRow: ex.sourceRow || idx + 1,
-          sourceSheet: parsedXlsx.sheetNames[0],
-          productCode: ex.productCode || `SKU-${idx + 1}`,
-          chineseText: ex.chineseText || '需要复核的供应商项目',
-          reasonCode: (ex.reasonCode as any) || 'UNAPPROVED_TRANSLATION',
-          description: ex.description || 'AI flag: Requires manager verification',
-          severity: 'warning',
-          resolved: false,
-          suggestedFix: ex.suggestedFix,
-        });
-      });
-
-      const hasExceptions = aiResult.exceptions.length > 0;
-      const newStatus = hasExceptions
-        ? 'Generated – Exceptions Need Review'
-        : 'Generated – Ready for Approval';
-
-      quote.worksheets = updatedWorksheets;
-      quote.wholeHouseTotals = wholeHouseTotals;
-      quote.status = newStatus;
-      quote.updatedAt = new Date().toISOString();
-
-      db.saveQuote(quote);
-      if (project) {
-        db.updateProject(project.id, {
-          status: newStatus,
-          totalMYRCents: wholeHouseTotals.grandTotalCents,
-        });
-      }
-
-      db.addAuditLog({
-        projectId: quote.projectId,
-        quoteId: quote.id,
-        action: 'CONVERSION_COMPLETED',
-        performedBy: 'MOCOF AI Converter',
-        details: `Parsed ${parsedXlsx.sheetNames.length} worksheets from ${originalFileName}. Generated 6-sheet customer quote with ${aiResult.exceptions.length} exception flags.`,
-      });
-
-      res.json({
-        quote,
-        parsedSheetNames: parsedXlsx.sheetNames,
-        extractedImageCount: parsedXlsx.extractedImages.length,
-        exceptions: db.getExceptionsByQuoteId(quote.id),
-      });
+      res.json(await convertSupplierWorkbook(quote, req.file.originalname, req.file.buffer));
     } catch (err: any) {
       console.error('Conversion endpoint error:', err);
+      res.status(500).json({ error: err.message || 'Conversion failed' });
+    }
+  });
+
+  // Serverless-safe normal workflow: create a new quote and convert its source
+  // workbook in the same request. This avoids a Vercel cold start losing the
+  // temporary file-backed quote between separate create and convert requests.
+  app.post('/api/convert', upload.single('supplierFile'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'Please choose the original Chinese supplier XLSX file before starting conversion.' });
+      }
+      const input = req.body.projectData ? JSON.parse(req.body.projectData) : {};
+      const newProjectId = `proj-${Date.now()}`;
+      const newQuoteId = `quote-${Date.now()}`;
+      const rates = createRateSnapshot(input.currency || 'MYR');
+      const newQuote: Quote = {
+        id: newQuoteId, projectId: newProjectId, versionNumber: 1, versionLabel: 'v1.0-Initial', status: 'Processing',
+        currency: input.currency || 'MYR', exchangeRate: rates, worksheets: [], supplementaryItems: [],
+        wholeHouseTotals: { cabinetProductsCents: 0, lfProductsCents: 0, customDoorProductsCents: 0, wallPanelProductsCents: 0, kitchenVanityProductsCents: 0, supplementaryItemsCents: 0, subtotalCents: 0, discountCents: 0, taxPercent: 6, taxCents: 0, grandTotalCents: 0, sourceReconciliationTotalCNYCents: 0, sourceReconciliationConvertedMYRCents: 0, reconciliationDifferenceCents: 0, reconciled: true },
+        termsAndConditions: db.getConversionProfile().termsAndConditions, createdBy: 'Manager', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      };
+      const newProject: Project = {
+        id: newProjectId, name: input.name || 'New MOCOF Renovation Project', customerName: input.customerName || 'Valued Customer', customerPhone: input.customerPhone || '', customerEmail: input.customerEmail || '', projectAddress: input.projectAddress || '', quotationNumber: `MOC-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`, status: 'Processing', currency: input.currency || 'MYR', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), currentQuoteId: newQuoteId, totalMYRCents: 0,
+      };
+      db.createProject(newProject);
+      db.saveQuote(newQuote);
+      db.addAuditLog({ projectId: newProjectId, quoteId: newQuoteId, action: 'PROJECT_CREATED', performedBy: 'User', details: `Created project ${newProject.name} (${newProject.quotationNumber}).` });
+      res.json(await convertSupplierWorkbook(newQuote, req.file.originalname, req.file.buffer));
+    } catch (err: any) {
+      console.error('One-step conversion endpoint error:', err);
       res.status(500).json({ error: err.message || 'Conversion failed' });
     }
   });
@@ -246,7 +298,7 @@ export async function createApp() {
       return res.status(404).json({ error: 'Quote not found' });
     }
 
-    const { worksheets, supplementaryItems, notes, versionLabel } = req.body;
+    const { worksheets, supplementaryItems, notes, versionLabel, bossPromptCommands, promptRecipeBaseline } = req.body;
     const profile = db.getConversionProfile();
     const rateValue = existingQuote.exchangeRate.rate || 0.652;
 
@@ -274,6 +326,8 @@ export async function createApp() {
       versionLabel: versionLabel || `v1.${existingQuote.versionNumber}-Edited`,
       updatedAt: new Date().toISOString(),
       notes: notes || existingQuote.notes,
+      bossPromptCommands: Array.isArray(bossPromptCommands) ? bossPromptCommands : existingQuote.bossPromptCommands,
+      promptRecipeBaseline: promptRecipeBaseline || existingQuote.promptRecipeBaseline,
     };
 
     db.saveQuote(updatedQuote);

@@ -63,8 +63,17 @@ class Database {
             conversionProfile: {
               ...DEFAULT_CONVERSION_PROFILE,
               ...parsed.conversionProfile,
+              bossEditingRules: String(parsed.conversionProfile?.bossEditingRules || '').includes('Determine the Area number from the number of real room')
+                ? parsed.conversionProfile.bossEditingRules
+                : DEFAULT_CONVERSION_PROFILE.bossEditingRules,
               areaPromptRules:
-                parsed.conversionProfile?.areaPromptRules?.length > 0
+                parsed.conversionProfile?.areaPromptRules?.length > 0 &&
+                !parsed.conversionProfile.areaPromptRules.some((rule: any) =>
+                  String(rule.instructions || '').includes('awaiting boss row-layout differences') ||
+                  String(rule.label || '').includes('standard 13-row') ||
+                  String(rule.instructions || '').includes('Preserve the area-specific row positions') ||
+                  !String(rule.instructions || '').includes('CHANGE THE TOP HEADINGS PROMPT:')
+                )
                   ? parsed.conversionProfile.areaPromptRules
                   : DEFAULT_CONVERSION_PROFILE.areaPromptRules,
             },

@@ -32,7 +32,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
   const [activeStep, setActiveStep] = useState<number>(0);
 
   const processingSteps = [
-    { label: 'Parsing Raw Chinese XLSX Worksheets & Merged Cells', icon: FileSpreadsheet },
+    { label: 'Reading Chinese XLSX worksheets or PDF quotation pages', icon: FileSpreadsheet },
     { label: 'Extracting Embedded Product Photos & Drawing Anchors', icon: Layers },
     { label: 'Applying AI Gemini Terminology & Mappings Profile', icon: Sparkles },
     { label: 'Executing Deterministic Integer Price & Exchange Calculations', icon: Zap },
@@ -80,16 +80,16 @@ export const UploadView: React.FC<UploadViewProps> = ({
   return (
     <div className="max-w-4xl mx-auto space-y-6 py-4">
       {/* Focused flow header */}
-      <div className="bg-slate-900 text-white p-6 rounded-xl shadow-sm border border-slate-800 space-y-2">
+      <div className="bg-gradient-to-br from-[#183b6b] via-[#0b1f3a] to-[#050505] text-white p-6 rounded-xl shadow-lg shadow-black/20 border border-[#183b6b] space-y-2">
         <div className="flex items-center justify-between">
-          <span className="bg-emerald-500/15 text-emerald-300 text-xs px-3 py-0.5 rounded-full border border-emerald-400/20 font-semibold tracking-wide">
+          <span className="bg-white/10 text-white text-xs px-3 py-0.5 rounded-full border border-white/60 font-semibold tracking-wide">
             Step 1 of 3: Upload source quotation
           </span>
-          <span className="text-xs text-slate-400 font-medium">Chinese supplier file → customer-ready quotation</span>
+          <span className="text-xs text-slate-200 font-medium">Chinese supplier file → customer-ready quotation</span>
         </div>
         <h2 className="text-2xl font-extrabold tracking-tight">Upload the raw Chinese quotation</h2>
-        <p className="text-xs text-slate-300 font-normal leading-relaxed">
-          Upload Chinese supplier quotation workbook (.xlsx). The system will automatically convert all worksheets into MOCOF's boss-approved English customer format.
+        <p className="text-xs text-slate-200 font-normal leading-relaxed">
+          Upload a Chinese supplier workbook (.xlsx) or quotation PDF. The system converts it into MOCOF's editable English customer format.
         </p>
       </div>
 
@@ -100,9 +100,9 @@ export const UploadView: React.FC<UploadViewProps> = ({
         onDrop={handleDrop}
         className={`bg-white border-2 border-dashed rounded-xl p-8 text-center transition-all shadow-xs ${
           dragActive
-            ? 'border-emerald-500 bg-emerald-50/50 scale-[1.01]'
+            ? 'border-[#183b6b] bg-slate-50 scale-[1.01]'
             : selectedFile
-            ? 'border-emerald-600 bg-emerald-50/20'
+            ? 'border-[#183b6b] bg-slate-50'
             : 'border-slate-300 hover:border-slate-400 bg-white'
         }`}
       >
@@ -116,7 +116,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
               {selectedFile ? selectedFile.name : 'Upload Chinese Supplier Quotation File'}
             </h3>
             <p className="text-xs text-slate-500 mt-1">
-              Upload the original supplier workbook in .xlsx format (Max 50MB). Product photos inside the workbook are preserved.
+              Upload the original supplier workbook (.xlsx) or quotation PDF (Max 50MB). XLSX product photos are preserved; PDF items are extracted by Gemini and flagged if a source image is unavailable.
             </p>
           </div>
 
@@ -126,7 +126,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
                 Browse File
                 <input
                   type="file"
-                  accept=".xlsx"
+                  accept=".xlsx,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf"
                   onChange={handleFileChange}
                   className="hidden"
                 />
@@ -135,10 +135,10 @@ export const UploadView: React.FC<UploadViewProps> = ({
               <button
                 onClick={() => startConversion()}
                 disabled={!selectedFile}
-                className="inline-flex items-center px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors"
+                className="inline-flex items-center px-5 py-2.5 bg-[#0b1f3a] hover:bg-[#183b6b] text-white text-xs font-semibold rounded-lg shadow-sm shadow-black/20 transition-colors"
               >
-                <Sparkles className="w-4 h-4 mr-1.5 text-emerald-400" />
-                {selectedFile ? 'Convert to Customer Quotation' : 'Choose an XLSX file first'}
+                <Sparkles className="w-4 h-4 mr-1.5 text-white" />
+                {selectedFile ? 'Convert to Customer Quotation' : 'Choose an XLSX or PDF file first'}
               </button>
             </div>
           )}

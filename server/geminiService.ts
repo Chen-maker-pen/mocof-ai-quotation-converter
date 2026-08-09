@@ -23,14 +23,93 @@ function getGeminiClient(): GoogleGenAI | null {
 }
 
 const EXTRACTOR_SYSTEM_PROMPT =
-  'You are MOCOF’s careful Chinese-to-English renovation quotation extractor. Extract the source into the supplied schema. Preserve Chinese text, source references, product images, SKU, dimensions, room, category, quantity, supplier unit price, supplier total and notes. Translate in concise professional English. Never invent facts and never calculate totals. If uncertain, return null and review_required=true. Return only schema-valid JSON.';
+  'You are MOCOF’s careful Chinese-to-English renovation quotation extractor. Return one entry for every source product row with an SKU/code. Preserve Chinese text, source references, product images, SKU, dimensions, room, category, quantity, supplier unit price, supplier total and notes. Translate the product name into concise professional English. Never invent facts and never calculate totals. If uncertain, return null and review_required=true. Return only schema-valid JSON.';
 
 const CONVERSION_SYSTEM_PROMPT =
   'You are MOCOF’s automatic quotation conversion agent. Apply the supplied MOCOF Customer English profile to the structured source quotation. Return a schema-valid final quotation and an exception list. Follow all deterministic mappings where available. Do not invent a product, photo, price, quantity, dimension, discount, tax, exchange rate or total. Preserve Whole House Total and Supplementary Items. Mark any uncertainty as an exception. Return only JSON.';
 
+export interface PdfQuotationExtraction {
+  customerName?: string;
+  rooms: Array<{
+    name: string;
+    items: Array<{
+      section: string;
+      nameChinese: string;
+      nameEnglish: string;
+      itemCode: string;
+      dimensionText: string;
+      quantity: number;
+      supplierPrice: number;
+    }>;
+  }>;
+}
+
+/**
+ * PDFs do not contain the editable worksheet grid that Excel templates have.
+ * Gemini reads the PDF and returns a source-shaped structure; the normal
+ * deterministic quotation builder then creates the editable workbook.
+ */
+export async function extractPdfQuotation(buffer: Buffer): Promise<PdfQuotationExtraction> {
+  const ai = getGeminiClient();
+  if (!ai) {
+    throw new Error('PDF conversion requires GEMINI_API_KEY. Add the key, redeploy/restart the app, then upload the PDF again. XLSX conversion can still use the deterministic parser without an API key.');
+  }
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3.6-flash',
+    contents: [{
+      role: 'user',
+      parts: [
+        { inlineData: { mimeType: 'application/pdf', data: buffer.toString('base64') } },
+        { text: 'Read this Chinese renovation quotation PDF. Extract only explicit facts into rooms and product rows. A room is a customer space, not Extra m2, Curve, Wall Panel, discount or a service. Preserve names, item codes, dimensions, quantities and source prices exactly when readable. Give an empty string or 0 for an unreadable fact; never invent it.' },
+      ],
+    }],
+    config: {
+      systemInstruction: EXTRACTOR_SYSTEM_PROMPT,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          customerName: { type: Type.STRING },
+          rooms: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                items: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      section: { type: Type.STRING }, nameChinese: { type: Type.STRING }, nameEnglish: { type: Type.STRING },
+                      itemCode: { type: Type.STRING }, dimensionText: { type: Type.STRING }, quantity: { type: Type.NUMBER }, supplierPrice: { type: Type.NUMBER },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  try {
+    const extracted = JSON.parse(response.text || '{}');
+    if (!Array.isArray(extracted.rooms) || extracted.rooms.length === 0) {
+      throw new Error('No room tables were found in the PDF.');
+    }
+    return extracted as PdfQuotationExtraction;
+  } catch (error: any) {
+    throw new Error(`Could not read this PDF quotation: ${error.message || 'no structured quotation data returned'}`);
+  }
+}
+
 export async function processAiExtractionAndConversion(
   rawChineseRows: any[][],
-  profile: ConversionProfile
+  profile: ConversionProfile,
+  detectedArea?: number
 ): Promise<{
   translatedItems: Partial<QuoteItem>[];
   exceptions: Partial<ExceptionItem>[];
@@ -49,13 +128,18 @@ export async function processAiExtractionAndConversion(
       rules: profile.rules,
       bossEditingRules: profile.bossEditingRules,
       areaPromptRules: profile.areaPromptRules,
+      detectedArea: detectedArea || null,
       instructionPriority: [
         'Preserve source facts and embedded photos',
+        `Use detectedArea ${detectedArea || 'unknown'} when it is supplied. Count only real customer rooms/spaces to select Area 1–10; never count MOCOF add-ons or services as an area`,
+        'List real rooms first in Whole House Total, then list the MOCOF service/add-on rows',
         'Apply shared boss editing rules',
         'Apply the one area rule that matches the worksheet layout',
         'Flag ambiguity for boss review instead of guessing',
       ],
-      sourceDataSample: rawChineseRows.slice(0, 30),
+      // These are compact structured product rows, so include every visible
+      // product rather than translating only the first 30 source spreadsheet rows.
+      sourceProductRows: rawChineseRows.slice(0, 600),
     };
 
     const response = await ai.models.generateContent({

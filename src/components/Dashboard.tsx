@@ -136,7 +136,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="flex items-center space-x-3">
           <button
             onClick={() => setShowNewModal(true)}
-            className="inline-flex items-center px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-sm transition-all"
+            className="inline-flex items-center px-4 py-2.5 bg-[#0b1f3a] hover:bg-[#183b6b] text-white text-xs font-semibold rounded-lg shadow-sm transition-all"
           >
             <FolderPlus className="w-4 h-4 mr-2 text-emerald-400" />
             New Renovation Project
@@ -144,7 +144,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           <button
             onClick={onNavigateUpload}
-            className="inline-flex items-center px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-all"
+            className="inline-flex items-center px-4 py-2.5 bg-[#183b6b] hover:bg-[#050505] text-white text-xs font-semibold rounded-lg shadow-sm transition-all"
           >
             <FileSpreadsheet className="w-4 h-4 mr-2" />
             Upload Supplier XLSX
@@ -232,7 +232,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 onClick={() => setFilter(tab.value)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
                   filter === tab.value
-                    ? 'bg-slate-900 text-white shadow-xs'
+              ? 'bg-[#7787c6] text-white shadow-xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
@@ -291,7 +291,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => onSelectProject(p.id)}
-                        className="inline-flex items-center px-3 py-1.5 bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-700 text-xs font-semibold rounded-lg transition-colors"
+                        className="inline-flex items-center px-3 py-1.5 bg-[#e7eafa] hover:bg-[#7787c6] hover:text-white text-emerald-950 text-xs font-semibold rounded-lg transition-colors"
                       >
                         Open Workspace <ArrowRight className="w-3.5 h-3.5 ml-1" />
                       </button>
@@ -386,7 +386,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-xs font-semibold shadow-xs"
+                  className="px-4 py-2 bg-[#7787c6] text-white rounded-lg hover:bg-[#6878b7] text-xs font-semibold shadow-xs"
                 >
                   Create & Launch Workspace
                 </button>

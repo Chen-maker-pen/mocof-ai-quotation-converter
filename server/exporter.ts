@@ -9,7 +9,9 @@ import autoTable from 'jspdf-autotable';
 import { Quote, ConversionProfile, Project } from '../src/types.js';
 
 /**
- * Generate 6-Sheet Customer XLSX Workbook using saved Quote state
+ * Generate the customer workbook in the same single-sheet sequence as the
+ * approved MOCOF quotation: Whole House Total → Supplementary → room tables.
+ * It intentionally does not use a generic “ROOM:” product-card export.
  */
 export async function generateCustomerXlsx(
   quote: Quote,
@@ -37,163 +39,132 @@ export async function generateCustomerXlsx(
   const boldFont = { name: 'Arial', size: 10, bold: true };
   const normalFont = { name: 'Arial', size: 10 };
 
-  // 1. Sheet 1: Whole-House Details
+  const paleHeader = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6ECE9' } } as ExcelJS.Fill;
+  const navyFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF08275B' } } as ExcelJS.Fill;
+  const currencyFormat = '"RM" #,##0.00;[Red]-"RM" #,##0.00';
+  const visibleItems = (room: Quote['worksheets'][number]['rooms'][number]) =>
+    room.sections.flatMap((section) => section.items.filter((item) => item.isVisibleToCustomer));
+  const customerWorksheet = quote.worksheets.find((sheet) => sheet.code === 'whole_house') || quote.worksheets[0];
+
+  // One continuous customer-facing sheet — exactly the order in the approved PDF.
   const wsWholeHouse = workbook.addWorksheet('Whole-House Details');
   wsWholeHouse.views = [{ showGridLines: true }];
+  wsWholeHouse.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+  wsWholeHouse.columns = [
+    { width: 7 }, { width: 24 }, { width: 17 }, { width: 24 }, { width: 16 },
+    { width: 17 }, { width: 17 }, { width: 17 }, { width: 17 },
+  ];
 
-  // Header Branding Block
-  wsWholeHouse.mergeCells('A1:H1');
-  const titleCell = wsWholeHouse.getCell('A1');
-  titleCell.value = `${profile.companyName} - CUSTOMER QUOTATION`;
-  titleCell.font = { name: 'Arial', size: 16, bold: true, color: { argb: 'FF0F382C' } };
-
-  wsWholeHouse.getCell('A2').value = `Address: ${profile.companyAddress}`;
-  wsWholeHouse.getCell('A3').value = `Reg No: ${profile.companyRegNo} | Tel: ${profile.companyPhone} | Email: ${profile.companyEmail}`;
-
-  wsWholeHouse.getCell('F2').value = `Quotation No: ${project.quotationNumber}`;
-  wsWholeHouse.getCell('F3').value = `Date: ${new Date(quote.createdAt).toLocaleDateString('en-GB')}`;
-  wsWholeHouse.getCell('F4').value = `Customer: ${project.customerName}`;
-  wsWholeHouse.getCell('F5').value = `Site Address: ${project.projectAddress}`;
-  wsWholeHouse.getCell('F6').value = `Currency: ${quote.currency} (Rate: ${quote.exchangeRate.rate} | Locked: ${quote.exchangeRate.isLocked ? 'Yes' : 'No'})`;
-
-  wsWholeHouse.addRow([]);
-
-  // Table Headers
-  const tableHeaders = ['Photo', 'English Item Description', 'SKU', 'Dimensions', 'Qty', 'Unit Price', 'Discount', 'Amount'];
-
-  let currentRowIndex = 8;
-
-  // Sheet 1 is already the complete customer-facing overview.  Including the
-  // five category worksheets here duplicated every room and inflated totals.
-  const wholeHouseWorksheet = quote.worksheets.find((ws) => ws.code === 'whole_house') || quote.worksheets[0];
-  ;[wholeHouseWorksheet].filter(Boolean).forEach((ws) => {
-    ws.rooms.forEach((room) => {
-      // Room Header
-      wsWholeHouse.mergeCells(`A${currentRowIndex}:H${currentRowIndex}`);
-      const rmCell = wsWholeHouse.getCell(`A${currentRowIndex}`);
-      rmCell.value = `ROOM: ${room.roomNameEnglish.toUpperCase()}`;
-      rmCell.fill = darkGreenFill;
-      rmCell.font = headerFont;
-      currentRowIndex++;
-
-      // Table Header Row
-      const headRow = wsWholeHouse.addRow(tableHeaders);
-      headRow.font = boldFont;
-      headRow.eachCell((cell) => {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6ECE9' } };
-      });
-      currentRowIndex++;
-
-      // Room Items
-      room.sections.forEach((sec) => {
-        sec.items.forEach((item) => {
-          if (!item.isVisibleToCustomer) return;
-
-          const row = wsWholeHouse.addRow([
-            '',
-            item.nameEnglish,
-            item.itemCode,
-            item.dimensionText,
-            item.quantity,
-            (item.unitPriceCents / 100).toFixed(2),
-            (item.discountCents / 100).toFixed(2),
-            (item.finalAmountCents / 100).toFixed(2),
-          ]);
-          row.font = normalFont;
-          // Preserve the original embedded product image in the generated XLSX.
-          if (item.imageUrl?.startsWith('data:image/')) {
-            const imageId = workbook.addImage({ base64: item.imageUrl, extension: item.imageUrl.includes('image/png') ? 'png' : 'jpeg' });
-            wsWholeHouse.addImage(imageId, { tl: { col: 0, row: currentRowIndex - 1 }, ext: { width: 42, height: 42 } });
-            row.height = 36;
-          }
-          currentRowIndex++;
-        });
-      });
-
-      // Room Subtotal
-      const subRow = wsWholeHouse.addRow(['', 'Subtotal for ' + room.roomNameEnglish, '', '', '', '', '', (room.subtotals.subtotalCents / 100).toFixed(2)]);
-      subRow.font = boldFont;
-      currentRowIndex++;
-      currentRowIndex++;
-    });
-  });
-
-  // Mandatory Supplementary Items Section
-  wsWholeHouse.mergeCells(`A${currentRowIndex}:H${currentRowIndex}`);
-  const suppHeader = wsWholeHouse.getCell(`A${currentRowIndex}`);
-  suppHeader.value = 'MANDATORY SUPPLEMENTARY ITEMS & SERVICES';
-  suppHeader.fill = darkGreenFill;
-  suppHeader.font = headerFont;
-  currentRowIndex++;
-
-  if (quote.supplementaryItems.length === 0) {
-    wsWholeHouse.addRow(['No supplementary items.']);
-    currentRowIndex++;
-  } else {
-    quote.supplementaryItems.forEach((supp) => {
-      wsWholeHouse.addRow(['', supp.description, '-', '-', supp.quantity, (supp.unitPriceCents / 100).toFixed(2), '0.00', (supp.totalAmountCents / 100).toFixed(2)]);
-      currentRowIndex++;
-    });
+  wsWholeHouse.mergeCells('A1:D4');
+  wsWholeHouse.getCell('A1').value = 'MOCOF\nInnovative | Versatile | Flexible';
+  wsWholeHouse.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  wsWholeHouse.getCell('A1').font = { name: 'Arial', size: 22, bold: true };
+  wsWholeHouse.mergeCells('E1:H1');
+  wsWholeHouse.getCell('E1').value = 'Mocof';
+  wsWholeHouse.getCell('E1').fill = navyFill;
+  wsWholeHouse.getCell('E1').font = { ...headerFont, size: 16 };
+  wsWholeHouse.getCell('E1').alignment = { horizontal: 'center' };
+  wsWholeHouse.getCell('E2').value = 'Customer name'; wsWholeHouse.getCell('F2').value = project.customerName;
+  wsWholeHouse.getCell('E3').value = 'Address'; wsWholeHouse.mergeCells('F3:H3'); wsWholeHouse.getCell('F3').value = project.projectAddress;
+  wsWholeHouse.getCell('E4').value = 'Sqft'; wsWholeHouse.getCell('F4').value = '';
+  wsWholeHouse.getCell('G2').value = 'Currency'; wsWholeHouse.getCell('H2').value = `1 CNY = ${quote.exchangeRate.rate} MYR`;
+  wsWholeHouse.getCell('G3').value = 'Budget'; wsWholeHouse.getCell('H3').value = '';
+  wsWholeHouse.getCell('G4').value = 'RM / Sqft'; wsWholeHouse.getCell('H4').value = '';
+  for (let row = 2; row <= 4; row++) for (let col = 5; col <= 8; col++) {
+    const cell = wsWholeHouse.getCell(row, col); cell.font = boldFont; cell.alignment = { vertical: 'middle', wrapText: true };
   }
 
-  currentRowIndex++;
-
-  // Mandatory Whole House Total Summary Table
-  wsWholeHouse.mergeCells(`A${currentRowIndex}:H${currentRowIndex}`);
-  const summaryHeader = wsWholeHouse.getCell(`A${currentRowIndex}`);
-  summaryHeader.value = 'WHOLE HOUSE TOTAL SUMMARY';
-  summaryHeader.fill = darkGreenFill;
-  summaryHeader.font = headerFont;
-  currentRowIndex++;
-
-  const totals = quote.wholeHouseTotals;
-  const totalRows = [
-    ['1. Cabinet Products', (totals.cabinetProductsCents / 100).toFixed(2)],
-    ['2. LF Products', (totals.lfProductsCents / 100).toFixed(2)],
-    ['3. Custom Door Products', (totals.customDoorProductsCents / 100).toFixed(2)],
-    ['4. Quick Installation / Wall Panel Products', (totals.wallPanelProductsCents / 100).toFixed(2)],
-    ['5. Kitchen and Vanity Products', (totals.kitchenVanityProductsCents / 100).toFixed(2)],
-    ['6. Supplementary Items', (totals.supplementaryItemsCents / 100).toFixed(2)],
-    ['SUBTOTAL', (totals.subtotalCents / 100).toFixed(2)],
-    [`Discount (${profile.defaultDiscountPercent}%)`, `- ${(totals.discountCents / 100).toFixed(2)}`],
-    [`Tax / SST (${totals.taxPercent}%)`, (totals.taxCents / 100).toFixed(2)],
-    ['GRAND TOTAL (' + quote.currency + ')', (totals.grandTotalCents / 100).toFixed(2)],
-  ];
-
-  totalRows.forEach(([lbl, val]) => {
-    const r = wsWholeHouse.addRow(['', lbl, '', '', '', '', '', val]);
-    r.font = lbl.startsWith('GRAND') || lbl === 'SUBTOTAL' ? boldFont : normalFont;
+  let currentRowIndex = 5;
+  const sectionBand = (title: string) => {
+    wsWholeHouse.mergeCells(`A${currentRowIndex}:I${currentRowIndex}`);
+    const cell = wsWholeHouse.getCell(`A${currentRowIndex}`);
+    cell.value = title; cell.fill = navyFill; cell.font = { ...headerFont, size: 12 };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' }; currentRowIndex++;
+  };
+  const headerRow = (labels: string[]) => {
+    const row = wsWholeHouse.getRow(currentRowIndex); row.values = labels;
+    row.eachCell((cell) => { cell.fill = paleHeader; cell.font = boldFont; cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; });
+    currentRowIndex++;
+  };
+  const borderRow = (row: ExcelJS.Row) => row.eachCell({ includeEmpty: true }, (cell) => {
+    cell.border = { top: { style: 'thin', color: { argb: 'FF808080' } }, bottom: { style: 'thin', color: { argb: 'FF808080' } }, left: { style: 'thin', color: { argb: 'FF808080' } }, right: { style: 'thin', color: { argb: 'FF808080' } } };
+    cell.alignment = { vertical: 'middle', wrapText: true };
   });
 
-  // Add remaining 5 sheets
-  const remainingSheetNames = [
-    '23 quotation details',
-    '25 Kitchen Cabinet Details',
-    '25 Custom Door Details',
-    'Kitchen and Vanity Details',
-    'LF Details',
-  ];
+  // 1. Whole House Total always comes first.
+  sectionBand('全屋汇总 / Whole House Total');
+  headerRow(['No.', 'Space', 'Wall Panel (m²)', 'Cabinet (m²)', 'RM 49,800.00', 'RM 79,800.00', 'Software Price', 'Before Price', 'After Price']);
+  const wholeStart = currentRowIndex;
+  (customerWorksheet?.rooms || []).forEach((room, index) => {
+    const items = visibleItems(room);
+    const before = items.reduce((total, item) => total + item.totalAmountCents, 0) / 100;
+    const after = items.reduce((total, item) => total + item.finalAmountCents, 0) / 100;
+    const software = items.reduce((total, item) => total + item.supplierPriceCents * item.quantity, 0) / 100;
+    const row = wsWholeHouse.addRow([index + 1, `${room.roomNameEnglish}${room.roomNameChinese && room.roomNameChinese !== room.roomNameEnglish ? ` // ${room.roomNameChinese}` : ''}`, '', '', '', '', software, before, after]);
+    row.getCell(7).numFmt = currencyFormat; row.getCell(8).numFmt = currencyFormat; row.getCell(9).numFmt = currencyFormat; borderRow(row); currentRowIndex++;
+  });
+  ['Extra m2', 'Curve', 'Wall Panel', 'Aluminium Frame', 'Add-on finishing', 'Deduct Design Fee'].forEach((name, index) => {
+    const row = wsWholeHouse.addRow([customerWorksheet?.rooms.length ? customerWorksheet.rooms.length + index + 1 : index + 1, name, '', '', 0, 0, 0, 0, 0]);
+    for (let col = 5; col <= 9; col++) row.getCell(col).numFmt = currencyFormat;
+    borderRow(row); currentRowIndex++;
+  });
+  const wholeTotalRow = currentRowIndex;
+  const totalRow = wsWholeHouse.addRow(['', 'Total Price:', '', '', { formula: `SUM(E${wholeStart}:E${wholeTotalRow - 1})` }, { formula: `SUM(F${wholeStart}:F${wholeTotalRow - 1})` }, { formula: `SUM(G${wholeStart}:G${wholeTotalRow - 1})` }, { formula: `SUM(H${wholeStart}:H${wholeTotalRow - 1})` }, { formula: `SUM(I${wholeStart}:I${wholeTotalRow - 1})` }]);
+  totalRow.font = { ...boldFont, color: { argb: 'FFFF0000' } }; for (let col = 5; col <= 9; col++) totalRow.getCell(col).numFmt = currencyFormat; borderRow(totalRow); currentRowIndex += 2;
 
-  remainingSheetNames.forEach((sheetName, index) => {
-    const sheet = workbook.addWorksheet(sheetName);
-    sheet.getCell('A1').value = `${profile.companyName} - ${sheetName.toUpperCase()}`;
-    sheet.getCell('A1').font = boldFont;
+  // 2. Supplementary always follows Whole House Total.
+  sectionBand('Supplementary');
+  headerRow(['No.', 'Item', 'sqft / per', 'Qty / per', 'RM 49,800.00', 'RM 79,800.00', 'Software Price', 'Before Price', 'After Price']);
+  const supplementaryStart = currentRowIndex;
+  quote.supplementaryItems.forEach((item, index) => {
+    const perValue = item.perValue ?? Number(String(item.notes || '').match(/[\d.]+$/)?.[0] || 0);
+    const afterPrice = item.totalAmountCents / 100;
+    const beforePrice = afterPrice > 0 ? afterPrice / 0.8 : perValue * 600 * item.quantity;
+    const packagePrice = index < 5 ? 0 : afterPrice;
+    const row = wsWholeHouse.addRow([index + 1, item.description, perValue || '', item.quantity, packagePrice, packagePrice, afterPrice, beforePrice, afterPrice]);
+    for (let col = 5; col <= 9; col++) row.getCell(col).numFmt = currencyFormat;
+    borderRow(row); currentRowIndex++;
+  });
+  const supplementaryTotalRow = currentRowIndex;
+  const suppTotal = wsWholeHouse.addRow(['', 'Total Supplementary:', '', '', { formula: `SUM(E${supplementaryStart}:E${supplementaryTotalRow - 1})` }, { formula: `SUM(F${supplementaryStart}:F${supplementaryTotalRow - 1})` }, { formula: `SUM(G${supplementaryStart}:G${supplementaryTotalRow - 1})` }, { formula: `SUM(H${supplementaryStart}:H${supplementaryTotalRow - 1})` }, { formula: `SUM(I${supplementaryStart}:I${supplementaryTotalRow - 1})` }]);
+  suppTotal.font = boldFont; for (let col = 5; col <= 9; col++) suppTotal.getCell(col).numFmt = currencyFormat; borderRow(suppTotal); currentRowIndex++;
+  const grand = wsWholeHouse.addRow(['', 'Total Whole House Price with Supplementary Items:', '', '', { formula: `E${wholeTotalRow}+E${supplementaryTotalRow}` }, { formula: `F${wholeTotalRow}+F${supplementaryTotalRow}` }, { formula: `G${wholeTotalRow}+G${supplementaryTotalRow}` }, { formula: `H${wholeTotalRow}+H${supplementaryTotalRow}` }, { formula: `I${wholeTotalRow}+I${supplementaryTotalRow}` }]);
+  grand.font = { ...boldFont, color: { argb: 'FFFF0000' } }; for (let col = 5; col <= 9; col++) grand.getCell(col).numFmt = currencyFormat; borderRow(grand); currentRowIndex += 2;
 
-    sheet.addRow(['Project:', project.name]);
-    sheet.addRow(['Quotation #:', project.quotationNumber]);
-    sheet.addRow([]);
-    sheet.addRow(['Item Code', 'Product Name (English)', 'Dimensions', 'Qty', 'Unit Price', 'Total']);
-
-    const sourceWorksheet = quote.worksheets.find((ws) => ws.name === sheetName || ws.worksheetIndex === index + 2);
-    const items = sourceWorksheet?.rooms.flatMap((room) => room.sections.flatMap((section) => section.items.filter((item) => item.isVisibleToCustomer))) || [];
-    if (items.length === 0) {
-      sheet.addRow(['No items from the supplier quotation belong to this category.']);
-    } else {
-      items.forEach((item) => {
-        sheet.addRow([item.itemCode, item.nameEnglish, item.dimensionText, item.quantity, item.unitPriceCents / 100, item.finalAmountCents / 100]);
+  // 3. Only the detected rooms and their real source sections follow.
+  (customerWorksheet?.rooms || []).forEach((room) => {
+    sectionBand(`${room.roomNameEnglish}${room.roomNameChinese && room.roomNameChinese !== room.roomNameEnglish ? ` // ${room.roomNameChinese}` : ''}`);
+    room.sections.filter((section) => section.items.some((item) => item.isVisibleToCustomer)).forEach((section) => {
+      wsWholeHouse.mergeCells(`A${currentRowIndex}:I${currentRowIndex}`);
+      const title = wsWholeHouse.getCell(`A${currentRowIndex}`);
+      title.value = section.sectionName || 'Cabinet Table'; title.fill = paleHeader; title.font = boldFont; title.alignment = { horizontal: 'center' }; currentRowIndex++;
+      headerRow(['No.', 'Product PIC', 'Combi', 'Name', 'Model', 'WDH', 'Qty', 'Before Price', 'After Price']);
+      const sectionStart = currentRowIndex;
+      section.items.filter((item) => item.isVisibleToCustomer).forEach((item, itemIndex) => {
+        const row = wsWholeHouse.addRow([itemIndex + 1, '', item.combi || item.category.replace(/_/g, ' '), item.nameEnglish || item.nameChinese, item.itemCode, item.dimensionText, item.quantity, item.totalAmountCents ? item.totalAmountCents / 100 : '', item.finalAmountCents ? item.finalAmountCents / 100 : '']);
+        row.getCell(8).numFmt = currencyFormat; row.getCell(9).numFmt = currencyFormat; row.height = item.imageUrl ? 36 : undefined; borderRow(row);
+        if (item.imageUrl?.startsWith('data:image/')) {
+          const imageId = workbook.addImage({ base64: item.imageUrl, extension: item.imageUrl.includes('image/png') ? 'png' : 'jpeg' });
+          wsWholeHouse.addImage(imageId, { tl: { col: 1, row: currentRowIndex - 1 }, ext: { width: 38, height: 38 } });
+        }
+        currentRowIndex++;
       });
-    }
+      const sectionTotalRow = wsWholeHouse.addRow(['', `${section.sectionName} Total Price:`, '', '', '', '', '', { formula: `SUM(H${sectionStart}:H${currentRowIndex - 1})` }, { formula: `SUM(I${sectionStart}:I${currentRowIndex - 1})` }]);
+      sectionTotalRow.font = boldFont; sectionTotalRow.getCell(8).numFmt = currencyFormat; sectionTotalRow.getCell(9).numFmt = currencyFormat; borderRow(sectionTotalRow); currentRowIndex++;
+    });
+    const roomTotal = wsWholeHouse.addRow(['', 'Total Price:', '', '', '', '', '', '', room.subtotals.subtotalCents / 100]);
+    roomTotal.font = { ...boldFont, color: { argb: 'FFFF0000' } }; roomTotal.getCell(9).numFmt = currencyFormat; borderRow(roomTotal); currentRowIndex += 2;
   });
+
+  wsWholeHouse.mergeCells(`A${currentRowIndex}:I${currentRowIndex + 2}`);
+  const terms = wsWholeHouse.getCell(`A${currentRowIndex}`);
+  terms.value = `Remark:\n${profile.termsAndConditions.map((term, index) => `${index + 1}. ${term}`).join('\n')}`;
+  terms.alignment = { wrapText: true, vertical: 'top' }; terms.font = { name: 'Arial', size: 9 };
+  currentRowIndex += 4;
+  wsWholeHouse.getCell(`D${currentRowIndex}`).value = 'Handle by:';
+  wsWholeHouse.getCell(`F${currentRowIndex}`).value = 'Customer Signature:';
+  wsWholeHouse.getCell(`F${currentRowIndex + 1}`).value = 'Date:';
+  wsWholeHouse.pageSetup.printArea = `A1:I${currentRowIndex + 1}`;
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
@@ -244,100 +215,36 @@ export async function generateCustomerPdf(
   doc.text(`Status: ${quote.status}`, 130, 50);
 
   let currentY = 56;
+  const customerWorksheet = quote.worksheets.find((sheet) => sheet.code === 'whole_house') || quote.worksheets[0];
+  const visibleItems = (room: Quote['worksheets'][number]['rooms'][number]) => room.sections.flatMap((section) => section.items.filter((item) => item.isVisibleToCustomer));
+  const advance = () => { currentY = (doc as any).lastAutoTable.finalY + 8; if (currentY > 240) { doc.addPage(); currentY = 18; } };
+  const tableTitle = (title: string) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(15, 56, 44); doc.text(title, 14, currentY); currentY += 4; };
 
-  // Build Table Data for Whole-House Details
-  const tableRows: any[][] = [];
+  // 1. Whole House Total is always the first table.
+  // jsPDF's built-in fonts cannot reliably render Chinese.  The PDF is the
+  // customer-ready English version; the XLSX retains bilingual room labels.
+  tableTitle('WHOLE HOUSE TOTAL');
+  const wholeRows = (customerWorksheet?.rooms || []).map((room, index) => {
+    const items = visibleItems(room);
+    return [String(index + 1), room.roomNameEnglish, (items.reduce((sum, item) => sum + item.totalAmountCents, 0) / 100).toFixed(2), (items.reduce((sum, item) => sum + item.finalAmountCents, 0) / 100).toFixed(2)];
+  });
+  autoTable(doc, { startY: currentY, head: [['No.', 'Space', 'Before Price (RM)', 'After Price (RM)']], body: wholeRows, headStyles: { fillColor: [8, 39, 91], textColor: [255, 255, 255] }, styles: { fontSize: 8, cellPadding: 2 }, margin: { left: 14, right: 14 } });
+  advance();
 
-  quote.worksheets.forEach((ws) => {
-    ws.rooms.forEach((room) => {
-      tableRows.push([
-        { content: `ROOM: ${room.roomNameEnglish.toUpperCase()}`, colSpan: 6, styles: { fillColor: [15, 56, 44], textColor: [255, 255, 255], fontStyle: 'bold' } },
-      ]);
+  // 2. Supplementary always immediately follows Whole House Total.
+  tableTitle('SUPPLEMENTARY');
+  const suppRows = quote.supplementaryItems.map((supp, index) => [String(index + 1), supp.description, String(supp.perValue ?? 0), supp.quantity.toString(), (supp.unitPriceCents / 100).toFixed(2), (supp.totalAmountCents / 100).toFixed(2)]);
+  autoTable(doc, { startY: currentY, head: [['No.', 'Item', 'sqft / per', 'Qty / per', 'After Price (RM)', 'Total (RM)']], body: suppRows, headStyles: { fillColor: [8, 39, 91], textColor: [255, 255, 255] }, styles: { fontSize: 8, cellPadding: 2 }, margin: { left: 14, right: 14 } });
+  advance();
 
-      room.sections.forEach((sec) => {
-        sec.items.forEach((item) => {
-          if (!item.isVisibleToCustomer) return;
-          tableRows.push([
-            item.nameEnglish,
-            item.itemCode,
-            item.dimensionText,
-            item.quantity.toString(),
-            (item.unitPriceCents / 100).toFixed(2),
-            (item.finalAmountCents / 100).toFixed(2),
-          ]);
-        });
-      });
+  // 3. The detailed Cabinet / Accessories / Wall Panel tables follow by room.
+  (customerWorksheet?.rooms || []).forEach((room) => {
+    tableTitle(room.roomNameEnglish);
+    room.sections.filter((section) => section.items.some((item) => item.isVisibleToCustomer)).forEach((section) => {
+      const details = section.items.filter((item) => item.isVisibleToCustomer).map((item, index) => [String(index + 1), item.nameEnglish || item.nameChinese, item.itemCode, item.dimensionText, String(item.quantity), item.totalAmountCents ? (item.totalAmountCents / 100).toFixed(2) : '', item.finalAmountCents ? (item.finalAmountCents / 100).toFixed(2) : '']);
+      autoTable(doc, { startY: currentY, head: [[section.sectionName || 'Cabinet Table', '', '', '', '', '', ''], ['No.', 'Name', 'Model', 'WDH', 'Qty', 'Before Price', 'After Price']], body: details, headStyles: { fillColor: [230, 236, 233], textColor: [15, 56, 44], fontStyle: 'bold' }, styles: { fontSize: 7, cellPadding: 1.5 }, margin: { left: 14, right: 14 } });
+      advance();
     });
-  });
-
-  autoTable(doc, {
-    startY: currentY,
-    head: [['Item Description', 'SKU', 'Dimensions', 'Qty', 'Unit Price', 'Amount']],
-    body: tableRows,
-    headStyles: { fillColor: [230, 236, 233], textColor: [15, 56, 44], fontStyle: 'bold' },
-    styles: { fontSize: 8, cellPadding: 2 },
-    margin: { left: 14, right: 14 },
-  });
-
-  // Supplementary Items
-  currentY = (doc as any).lastAutoTable.finalY + 8;
-  if (currentY > 240) {
-    doc.addPage();
-    currentY = 20;
-  }
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(15, 56, 44);
-  doc.text('MANDATORY SUPPLEMENTARY ITEMS & SERVICES', 14, currentY);
-  currentY += 4;
-
-  const suppRows: any[][] = [];
-  if (quote.supplementaryItems.length === 0) {
-    suppRows.push(['No supplementary items.', '-', '-', '-', '0.00']);
-  } else {
-    quote.supplementaryItems.forEach((supp) => {
-      suppRows.push([supp.description, supp.quantity.toString(), 'Lot', (supp.unitPriceCents / 100).toFixed(2), (supp.totalAmountCents / 100).toFixed(2)]);
-    });
-  }
-
-  autoTable(doc, {
-    startY: currentY,
-    head: [['Description', 'Qty', 'Unit', 'Unit Price', 'Total']],
-    body: suppRows,
-    headStyles: { fillColor: [230, 236, 233], textColor: [15, 56, 44] },
-    styles: { fontSize: 8 },
-    margin: { left: 14, right: 14 },
-  });
-
-  // Whole House Total Summary
-  currentY = (doc as any).lastAutoTable.finalY + 8;
-  if (currentY > 230) {
-    doc.addPage();
-    currentY = 20;
-  }
-
-  const totals = quote.wholeHouseTotals;
-  const totalsBody = [
-    ['Cabinet Products', (totals.cabinetProductsCents / 100).toFixed(2)],
-    ['LF Products', (totals.lfProductsCents / 100).toFixed(2)],
-    ['Custom Door Products', (totals.customDoorProductsCents / 100).toFixed(2)],
-    ['Quick Installation / Wall Panel Products', (totals.wallPanelProductsCents / 100).toFixed(2)],
-    ['Kitchen and Vanity Products', (totals.kitchenVanityProductsCents / 100).toFixed(2)],
-    ['Supplementary Items', (totals.supplementaryItemsCents / 100).toFixed(2)],
-    ['Subtotal', (totals.subtotalCents / 100).toFixed(2)],
-    [`Discount (${profile.defaultDiscountPercent}%)`, `- ${(totals.discountCents / 100).toFixed(2)}`],
-    [`Tax / SST (${totals.taxPercent}%)`, (totals.taxCents / 100).toFixed(2)],
-    [`GRAND TOTAL (${quote.currency})`, (totals.grandTotalCents / 100).toFixed(2)],
-  ];
-
-  autoTable(doc, {
-    startY: currentY,
-    head: [['Category Summary', 'Amount (' + quote.currency + ')']],
-    body: totalsBody,
-    headStyles: { fillColor: [15, 56, 44], textColor: [255, 255, 255] },
-    styles: { fontSize: 8 },
-    margin: { left: 80, right: 14 },
   });
 
   // Terms & Conditions and Signature Area

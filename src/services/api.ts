@@ -61,6 +61,23 @@ export const api = {
     return res.json();
   },
 
+  /** Creates a new quotation and converts the uploaded source workbook in one request. */
+  async createAndConvertSupplierFile(file: File, projectData: Partial<Project>): Promise<any> {
+    const formData = new FormData();
+    formData.append('supplierFile', file);
+    formData.append('projectData', JSON.stringify(projectData));
+
+    const res = await fetch('/api/convert', {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Conversion failed');
+    }
+    return res.json();
+  },
+
   // Update Quote Workspace
   async updateQuote(quoteId: string, quoteData: Partial<Quote>): Promise<Quote> {
     const res = await fetch(`/api/quotes/${quoteId}`, {

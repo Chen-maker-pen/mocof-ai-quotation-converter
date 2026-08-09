@@ -210,7 +210,7 @@ export const TestRunner: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto py-4">
-      <div className="bg-slate-900 text-white p-6 rounded-xl border border-slate-800 flex items-center justify-between shadow-sm">
+      <div className="bg-gradient-to-r from-[#7787c6] to-[#5f6faf] text-white p-6 rounded-xl border border-blue-300 flex items-center justify-between shadow-sm">
         <div>
           <h2 className="text-xl font-extrabold tracking-tight">Automated Rules & Business Logic Test Suite</h2>
           <p className="text-xs text-slate-300 mt-1 font-normal leading-relaxed">

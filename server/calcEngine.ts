@@ -72,22 +72,24 @@ export function recalculateWorksheet(
       let sectionTotalCents = 0;
 
       const updatedItems: QuoteItem[] = section.items.map((item) => {
-        // Calculate item pricing deterministically
-        const supplierCNY = item.supplierPriceCents / 100;
-        const pricing = calculateItemPricing(
-          supplierCNY,
-          exchangeRate,
-          item.markupPercent || profile.defaultMarkupPercent,
-          item.quantity,
-          item.discountCents
-        );
+        // MOCOF quotation-document rule: source item price becomes Before Price,
+        // then customer After Price is the documented 80% value. Do not apply
+        // the former exchange-rate/markup calculation to customer table prices.
+        // A merged Combi group carries its source price on the first row only;
+        // following component rows correctly remain zero so it is not double-counted.
+        const quantity = Math.max(1, Number(item.quantity) || 1);
+        const unitPriceCents = Math.max(0, Math.round(item.supplierPriceCents));
+        const totalAmountCents = unitPriceCents * quantity;
+        const discountPercent = item.discountPercentOverride ?? 20;
+        const discountCents = Math.round(totalAmountCents * (Math.min(100, Math.max(0, discountPercent)) / 100));
+        const finalAmountCents = totalAmountCents - discountCents;
 
         const updatedItem: QuoteItem = {
           ...item,
-          unitPriceCents: pricing.unitPriceCents,
-          totalAmountCents: pricing.totalAmountCents,
-          discountCents: pricing.discountCents,
-          finalAmountCents: pricing.finalAmountCents,
+          unitPriceCents,
+          totalAmountCents,
+          discountCents,
+          finalAmountCents,
         };
 
         if (updatedItem.isVisibleToCustomer) {

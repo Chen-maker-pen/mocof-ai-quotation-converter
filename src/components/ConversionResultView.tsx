@@ -81,7 +81,7 @@ export const ConversionResultView: React.FC<ConversionResultViewProps> = ({
             className={`px-4 py-2 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors inline-flex items-center ${
               unresolvedExceptions.length > 0
                 ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                : 'bg-slate-900 hover:bg-slate-800'
+                : 'bg-[#7787c6] hover:bg-[#6878b7]'
             }`}
           >
             <CheckCircle className="w-4 h-4 mr-1.5 text-emerald-400" />
@@ -175,12 +175,12 @@ export const ConversionResultView: React.FC<ConversionResultViewProps> = ({
 
         {/* PANEL B: Generated English MOCOF Customer Quotation (5 cols) */}
         <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200/80 shadow-xs flex flex-col h-[750px] overflow-hidden">
-          <div className="p-3 bg-slate-900 text-white flex items-center justify-between">
+          <div className="p-3 bg-gradient-to-r from-[#7787c6] to-[#5f6faf] text-white flex items-center justify-between">
             <div className="flex items-center space-x-2 text-xs font-bold">
               <FileText className="w-3.5 h-3.5 text-emerald-400" />
               <span>Panel B: MOCOF English Customer Quote</span>
             </div>
-            <span className="text-[10px] bg-slate-800 text-emerald-300 px-2 py-0.5 rounded font-mono font-bold">
+            <span className="text-[10px] bg-[#e7eafa] text-emerald-950 px-2 py-0.5 rounded font-mono font-bold">
               6 SHEETS GENERATED
             </span>
           </div>
@@ -221,9 +221,9 @@ export const ConversionResultView: React.FC<ConversionResultViewProps> = ({
                 <div key={ws.worksheetIndex} className="space-y-4">
                   {ws.rooms.map((room) => (
                     <div key={room.id} className="border border-slate-200/80 rounded-xl overflow-hidden shadow-2xs">
-                      <div className="bg-slate-900 text-white p-2.5 text-xs font-extrabold flex justify-between items-center">
+                      <div className="bg-gradient-to-r from-[#7787c6] to-[#5f6faf] text-white p-2.5 text-xs font-extrabold flex justify-between items-center">
                         <span>ROOM: {room.roomNameEnglish.toUpperCase()}</span>
-                        <span className="font-mono text-emerald-400 bg-slate-800 px-2 py-0.5 rounded">
+                        <span className="font-mono text-emerald-950 bg-[#e7eafa] px-2 py-0.5 rounded">
                           Subtotal: MYR {((room.subtotals.subtotalCents || 0) / 100).toFixed(2)}
                         </span>
                       </div>
@@ -273,7 +273,7 @@ export const ConversionResultView: React.FC<ConversionResultViewProps> = ({
               ))}
 
             {/* Whole House Totals Summary Block */}
-            <div className="bg-slate-900 text-white p-4 rounded-xl space-y-2 text-xs shadow-xs border border-slate-800">
+            <div className="bg-[#7787c6] text-white p-4 rounded-xl space-y-2 text-xs shadow-xs border border-sky-300">
               <p className="font-extrabold text-emerald-400 border-b border-slate-800 pb-1.5 uppercase tracking-wider text-[11px]">
                 Whole House Total Summary
               </p>

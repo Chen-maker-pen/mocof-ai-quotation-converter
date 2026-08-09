@@ -14,7 +14,6 @@ import {
 } from './types.js';
 import { Navbar } from './components/Navbar.tsx';
 import { UploadView } from './components/UploadView.tsx';
-import { ConversionResultView } from './components/ConversionResultView.tsx';
 import { QuotationEditor } from './components/QuotationEditor.tsx';
 import { AdminProfile } from './components/AdminProfile.tsx';
 import { TestRunner } from './components/TestRunner.tsx';
@@ -91,32 +90,28 @@ export default function App() {
   const handleProcessFile = async (file?: File) => {
     setIsProcessing(true);
     try {
-      // A new upload starts a fresh quotation.  Historic seeded projects are
-      // intentionally not shown in the normal customer-quotation workflow.
-      let project = currentProject;
-      let quote = currentQuote;
-      if (!project || !quote) {
-        const sourceName = file?.name.replace(/\.[^.]+$/, '') || 'New Chinese Supplier Quotation';
-        const created = await api.createProject({
-          name: sourceName,
-          customerName: 'Customer to be confirmed',
-          customerPhone: '',
-          customerEmail: '',
-          projectAddress: 'Site address to be confirmed',
-          currency: 'MYR',
-        });
-        const detail = await api.getProjectDetail(created.project.id);
-        project = detail.project;
-        quote = detail.quote;
-        setCurrentProject(project);
-        setCurrentQuote(quote);
-        setVersions(detail.versions);
-      }
-      const res = await api.convertSupplierFile(quote.id, file);
+      if (!file) throw new Error('Choose the original Chinese supplier .xlsx or .pdf file first.');
+
+      // Create and convert in one API request. This is required on Vercel,
+      // where a temporary serverless instance cannot be relied on to retain a
+      // newly-created quote for a second request.
+      const sourceName = file.name.replace(/\.[^.]+$/, '') || 'New Chinese Supplier Quotation';
+      const res = await api.createAndConvertSupplierFile(file, {
+        name: sourceName,
+        customerName: 'Customer to be confirmed',
+        customerPhone: '',
+        customerEmail: '',
+        projectAddress: 'Site address to be confirmed',
+        currency: 'MYR',
+      });
+      setCurrentProject(res.project);
       setCurrentQuote(res.quote);
       setExceptions(res.exceptions || []);
+      setVersions([]);
       showToast('Automatic conversion completed successfully!');
-      setActiveTab('conversion');
+      // The normal workflow opens the editable customer quotation workbook
+      // immediately. Source/audit panels are not part of the customer editor.
+      setActiveTab('editor');
     } catch (err: any) {
       showToast(err.message || 'Conversion failed', 'error');
     } finally {
@@ -182,10 +177,31 @@ export default function App() {
     showToast('Exporting customer XLSX workbook...');
   };
 
-  const handleExportPdf = () => {
+  const handleExportPdf = async () => {
     if (!currentQuote) return;
-    window.open(`/api/quotes/${currentQuote.id}/export/pdf`, '_blank');
-    showToast('Exporting customer PDF quotation...');
+    try {
+      const response = await fetch(`/api/quotes/${currentQuote.id}/export/pdf`);
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(detail || `PDF export failed (HTTP ${response.status})`);
+      }
+
+      const pdf = await response.blob();
+      if (pdf.size === 0) throw new Error('The server returned an empty PDF file.');
+
+      const objectUrl = URL.createObjectURL(pdf);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `MOCOF_Quotation_${currentProject?.quotationNumber || 'Customer_Quote'}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      showToast('Customer PDF downloaded successfully!');
+    } catch (err: any) {
+      console.error('PDF export failed:', err);
+      showToast(err.message || 'Failed to generate PDF export', 'error');
+    }
   };
 
   const handleUpdateAdminProfile = async (updated: Partial<ConversionProfile>) => {
@@ -210,14 +226,14 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/80 font-sans text-slate-900 flex flex-col antialiased">
+    <div className="min-h-screen bg-white font-sans text-slate-900 flex flex-col antialiased">
       {/* Toast Notification Banner */}
       {notification && (
         <div
           className={`fixed top-5 right-5 z-50 max-w-md w-full p-4 rounded-xl shadow-2xl border flex items-center justify-between text-xs font-semibold backdrop-blur-md transition-all animate-in fade-in slide-in-from-top-2 ${
             notification.type === 'error'
               ? 'bg-rose-900/95 text-white border-rose-700 shadow-rose-950/20'
-              : 'bg-slate-900/95 text-white border-emerald-500/40 shadow-slate-950/30'
+              : 'bg-[#0b1f3a]/95 text-white border-[#9eacc0] shadow-black/20'
           }`}
         >
           <div className="flex items-center space-x-3">
@@ -251,18 +267,6 @@ export default function App() {
             isProcessing={isProcessing}
             currentProjectName={currentProject?.name}
             quotationNumber={currentProject?.quotationNumber}
-          />
-        )}
-
-        {activeTab === 'conversion' && currentQuote && currentProject && (
-          <ConversionResultView
-            quote={currentQuote}
-            project={currentProject}
-            exceptions={exceptions}
-            auditLogs={auditLogs}
-            onResolveException={handleResolveException}
-            onNavigateEditor={() => setActiveTab('editor')}
-            onApproveQuote={handleApproveQuote}
           />
         )}
 

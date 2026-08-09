@@ -66,6 +66,8 @@ export interface QuoteItem {
   id: string;
   sourceRowIndex: number;
   sourceSheetName: string;
+  /** Supplier combination/group number, e.g. 1-1. A group price is shown once. */
+  combi?: string;
   itemCode: string;
   nameChinese: string;
   nameEnglish: string;
@@ -82,6 +84,8 @@ export interface QuoteItem {
   unitPriceCents: number; // In target currency (integer)
   totalAmountCents: number; // quantity * unitPriceCents
   discountCents: number;
+  /** Optional boss prompt override, e.g. SET DISCOUNT: 10%. */
+  discountPercentOverride?: number;
   finalAmountCents: number; // totalAmountCents - discountCents
   sourceImageId?: string;
   imageUrl?: string;
@@ -94,6 +98,8 @@ export interface QuoteItem {
 export interface SupplementaryItem {
   id: string;
   description: string;
+  /** The quotation-document "sqft / per" input; editable before export. */
+  perValue?: number;
   quantity: number;
   unitPriceCents: number;
   totalAmountCents: number;
@@ -148,6 +154,19 @@ export interface QuoteWorksheet {
   totalCents: number;
 }
 
+/** A boss-entered command that is applied to a preserved conversion baseline. */
+export interface BossPromptCommand {
+  id: string;
+  text: string;
+  enabled: boolean;
+}
+
+/** The unchanged initial customer workbook used when boss prompts are re-applied. */
+export interface PromptRecipeBaseline {
+  worksheets: QuoteWorksheet[];
+  supplementaryItems: SupplementaryItem[];
+}
+
 export interface Quote {
   id: string;
   projectId: string;
@@ -156,6 +175,14 @@ export interface Quote {
   status: ProjectStatus;
   currency: CurrencyCode;
   exchangeRate: ExchangeRateSnapshot;
+  /** Number of true room/space rows detected before MOCOF service/add-on rows. */
+  detectedArea?: number;
+  /** Read-only audit trail of the prompt instructions applied to this upload. */
+  promptTrace?: string[];
+  /** Optional boss commands layered on top of the documented Area recipe. */
+  bossPromptCommands?: BossPromptCommand[];
+  /** Preserved initial conversion so removing a command restores the table accurately. */
+  promptRecipeBaseline?: PromptRecipeBaseline;
   worksheets: QuoteWorksheet[];
   supplementaryItems: SupplementaryItem[];
   wholeHouseTotals: WholeHouseTotals;

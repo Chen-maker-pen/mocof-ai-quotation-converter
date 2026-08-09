@@ -83,7 +83,7 @@ export const AdminProfile: React.FC<AdminProfileProps> = ({
         <button
           onClick={handleSave}
           disabled={isSaving}
-          className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors inline-flex items-center"
+          className="px-5 py-2.5 bg-[#7787c6] hover:bg-[#6878b7] text-white text-xs font-semibold rounded-lg shadow-xs transition-colors inline-flex items-center"
         >
           <Save className="w-4 h-4 mr-2 text-emerald-400" />
           {isSaving ? 'Saving Profile...' : 'Save Profile Changes'}
@@ -96,7 +96,7 @@ export const AdminProfile: React.FC<AdminProfileProps> = ({
           onClick={() => setActiveTab('dictionary')}
           className={`px-4 py-2 rounded-lg font-bold transition-all ${
             activeTab === 'dictionary'
-              ? 'bg-slate-900 text-white shadow-xs'
+              ? 'bg-[#7787c6] text-white shadow-xs'
               : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
           }`}
         >
@@ -107,7 +107,7 @@ export const AdminProfile: React.FC<AdminProfileProps> = ({
           onClick={() => setActiveTab('pricing')}
           className={`px-4 py-2 rounded-lg font-bold transition-all ${
             activeTab === 'pricing'
-              ? 'bg-slate-900 text-white shadow-xs'
+              ? 'bg-[#7787c6] text-white shadow-xs'
               : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
           }`}
         >
@@ -118,7 +118,7 @@ export const AdminProfile: React.FC<AdminProfileProps> = ({
           onClick={() => setActiveTab('company')}
           className={`px-4 py-2 rounded-lg font-bold transition-all ${
             activeTab === 'company'
-              ? 'bg-slate-900 text-white shadow-xs'
+              ? 'bg-[#7787c6] text-white shadow-xs'
               : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
           }`}
         >
@@ -129,7 +129,7 @@ export const AdminProfile: React.FC<AdminProfileProps> = ({
           onClick={() => setActiveTab('terms')}
           className={`px-4 py-2 rounded-lg font-bold transition-all ${
             activeTab === 'terms'
-              ? 'bg-slate-900 text-white shadow-xs'
+              ? 'bg-[#7787c6] text-white shadow-xs'
               : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
           }`}
         >
@@ -140,7 +140,7 @@ export const AdminProfile: React.FC<AdminProfileProps> = ({
           onClick={() => setActiveTab('automation')}
           className={`px-4 py-2 rounded-lg font-bold transition-all ${
             activeTab === 'automation'
-              ? 'bg-slate-900 text-white shadow-xs'
+              ? 'bg-[#7787c6] text-white shadow-xs'
               : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
           }`}
         >
@@ -160,7 +160,7 @@ export const AdminProfile: React.FC<AdminProfileProps> = ({
             </div>
             <button
               onClick={handleAddRule}
-              className="px-3.5 py-1.5 bg-[#0f382c] hover:bg-[#1b4332] text-white text-xs font-semibold rounded-lg shadow-sm inline-flex items-center"
+              className="px-3.5 py-1.5 bg-[#d6dcef] hover:bg-[#e7eafa] text-emerald-950 text-xs font-semibold rounded-lg shadow-sm inline-flex items-center"
             >
               <Plus className="w-3.5 h-3.5 mr-1" /> Add Rule Entry
             </button>
