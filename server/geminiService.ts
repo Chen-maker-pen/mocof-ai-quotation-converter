@@ -4,7 +4,7 @@
  */
 
 import { GoogleGenAI, Type } from '@google/genai';
-import { ConversionProfile, QuoteItem, ExceptionItem } from '../src/types';
+import { ConversionProfile, QuoteItem, ExceptionItem } from '../src/types.js';
 
 let aiClient: GoogleGenAI | null = null;
 

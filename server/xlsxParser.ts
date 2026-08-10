@@ -5,10 +5,10 @@
 
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
-import { SourceImage, QuoteItem, QuoteWorksheet, QuoteRoom, QuoteSection, SupplementaryItem } from '../src/types';
-import { translateProductName, translateRoomName, translateSectionName } from './customerTranslations';
-import { extractPdfQuotation } from './geminiService';
-import { SAMPLE_PRODUCT_IMAGES } from './seedData';
+import { SourceImage, QuoteItem, QuoteWorksheet, QuoteRoom, QuoteSection, SupplementaryItem } from '../src/types.js';
+import { translateProductName, translateRoomName, translateSectionName } from './customerTranslations.js';
+import { extractPdfQuotation } from './geminiService.js';
+import { SAMPLE_PRODUCT_IMAGES } from './seedData.js';
 
 export interface ParsedXlsxResult {
   sheetNames: string[];

@@ -1,8 +1,9 @@
 /** Vercel serverless entry point for all MOCOF /api routes. */
-// Extensionless imports let Vercel bundle this TypeScript module and all of
-// its dependencies into the serverless function.  A literal `server.ts`
-// import is left behind in the deployed JavaScript and fails at runtime.
-import { createApp } from '../server';
+// Vercel executes the compiled JavaScript files in the serverless bundle.
+// Import the emitted module explicitly; `.ts` and extensionless imports are
+// left as invalid runtime paths in this project because `server/` is also a
+// directory containing the API dependencies.
+import { createApp } from '../server.js';
 
 export const config = {
   api: {
