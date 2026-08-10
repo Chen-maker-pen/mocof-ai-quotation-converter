@@ -8,17 +8,17 @@ import express from 'express';
 import path from 'path';
 import multer from 'multer';
 import { createServer as createViteServer } from 'vite';
-import { db } from './server/db.js';
-import { fetchLiveExchangeRates, lockRateSnapshot, createRateSnapshot } from './server/exchange.js';
-import { parseSupplierXlsxBuffer, parseSupplierPdfBuffer } from './server/xlsxParser.ts';
-import { processAiExtractionAndConversion } from './server/geminiService.js';
+import { db } from './server/db';
+import { fetchLiveExchangeRates, lockRateSnapshot, createRateSnapshot } from './server/exchange';
+import { parseSupplierXlsxBuffer, parseSupplierPdfBuffer } from './server/xlsxParser';
+import { processAiExtractionAndConversion } from './server/geminiService';
 import {
   recalculateWorksheet,
   calculateWholeHouseTotals,
   generateReconciliationReport,
-} from './server/calcEngine.js';
-import { generateCustomerXlsx, generateCustomerPdf } from './server/exporter.js';
-import { Project, Quote, QuoteVersion } from './src/types.js';
+} from './server/calcEngine';
+import { generateCustomerXlsx, generateCustomerPdf } from './server/exporter';
+import { Project, Quote, QuoteVersion } from './src/types';
 
 const upload = multer({ storage: multer.memoryStorage() });
 

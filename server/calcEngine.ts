@@ -14,7 +14,7 @@ import {
   ExchangeRateSnapshot,
   ConversionProfile,
   ReconciliationReport,
-} from '../src/types.js';
+} from '../src/types';
 
 /**
  * Converts supplier price in CNY to target currency unit price cents based on exchange rate & markup.

@@ -11,14 +11,14 @@ import {
   ExceptionItem,
   AuditLog,
   QuoteVersion,
-} from '../src/types.js';
+} from '../src/types';
 import {
   DEFAULT_CONVERSION_PROFILE,
   SEED_PROJECTS,
   SEED_QUOTES,
   SEED_EXCEPTIONS,
   SEED_AUDIT_LOGS,
-} from './seedData.js';
+} from './seedData';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'mocof_db.json');

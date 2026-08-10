@@ -3,7 +3,7 @@
  * Fetches live rate or mock fallback for MYR/CNY/SGD/USD, timestamps source, and locks snapshots per quote.
  */
 
-import { ExchangeRateSnapshot, CurrencyCode } from '../src/types.js';
+import { ExchangeRateSnapshot, CurrencyCode } from '../src/types';
 
 interface RatesCache {
   rates: Record<CurrencyCode, number>; // Rate relative to 1 CNY

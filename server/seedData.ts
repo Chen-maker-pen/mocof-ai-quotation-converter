@@ -11,7 +11,7 @@ import {
   MappingRule,
   ExceptionItem,
   AuditLog,
-} from '../src/types.js';
+} from '../src/types';
 
 const BOSS_EDITING_RULES = `
 Apply MOCOF Prompt Documentation rules in this order. Preserve the original Chinese workbook, source values and embedded product photos; create a customer-facing English version only.

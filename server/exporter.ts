@@ -6,7 +6,7 @@
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Quote, ConversionProfile, Project } from '../src/types.js';
+import { Quote, ConversionProfile, Project } from '../src/types';
 
 /**
  * Generate the customer workbook in the same single-sheet sequence as the

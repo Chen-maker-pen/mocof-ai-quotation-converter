@@ -5,7 +5,9 @@
  * paths.  It replaces the fragile rewrite-to-`/api` approach, which can make
  * Express receive `/api` instead of the original nested request path.
  */
-import { createApp } from '../server.ts';
+// See api/index.ts: Vercel traces extensionless TypeScript imports, while a
+// literal `.ts` specifier becomes a missing `/var/task/server.ts` at runtime.
+import { createApp } from '../server';
 
 export const config = {
   api: {
