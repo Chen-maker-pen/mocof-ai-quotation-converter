@@ -7,7 +7,6 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import multer from 'multer';
-import { createServer as createViteServer } from 'vite';
 import { db } from './server/db.js';
 import { fetchLiveExchangeRates, lockRateSnapshot, createRateSnapshot } from './server/exchange.js';
 import { parseSupplierXlsxBuffer, parseSupplierPdfBuffer } from './server/xlsxParser.js';
@@ -554,6 +553,10 @@ async function startServer() {
   // Vite middleware for development vs static serve for production.
   // This is intentionally local-only; Vercel serves dist and api/index.ts.
   if (process.env.NODE_ENV !== 'production') {
+    // Keep Vite out of the Vercel function dependency graph. Vite loads
+    // Rollup's platform-native binary, which belongs only in local dev and
+    // causes the serverless API to crash before any request can be handled.
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
