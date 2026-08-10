@@ -55,8 +55,9 @@ export const api = {
       body: formData,
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Conversion failed');
+      const text = await res.text();
+      const err = (() => { try { return JSON.parse(text); } catch { return null; } })();
+      throw new Error(err?.error || `Conversion failed (HTTP ${res.status}): ${text.slice(0, 180) || 'No response body'}`);
     }
     return res.json();
   },
@@ -72,8 +73,9 @@ export const api = {
       body: formData,
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Conversion failed');
+      const text = await res.text();
+      const err = (() => { try { return JSON.parse(text); } catch { return null; } })();
+      throw new Error(err?.error || `Conversion failed (HTTP ${res.status}): ${text.slice(0, 180) || 'No response body'}`);
     }
     return res.json();
   },

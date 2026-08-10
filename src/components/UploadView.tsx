@@ -21,6 +21,11 @@ interface UploadViewProps {
   quotationNumber?: string;
 }
 
+// Vercel Functions reject request bodies above 4.5 MB.  Keep a little safety
+// margin so the user gets an immediate, understandable message instead of a
+// generic Vercel 413 error. Local development has no such deployment limit.
+const VERCEL_UPLOAD_SAFE_MAX_BYTES = 4 * 1024 * 1024;
+
 export const UploadView: React.FC<UploadViewProps> = ({
   onProcessFile,
   isProcessing,
@@ -41,7 +46,13 @@ export const UploadView: React.FC<UploadViewProps> = ({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
+      const file = e.target.files[0];
+      if (file.size > VERCEL_UPLOAD_SAFE_MAX_BYTES) {
+        alert('This file is larger than 4 MB. Vercel rejects uploads above 4.5 MB. Please export a smaller XLSX/PDF or use the local version of MOCOF for this file.');
+        e.target.value = '';
+        return;
+      }
+      setSelectedFile(file);
     }
   };
 
@@ -58,7 +69,12 @@ export const UploadView: React.FC<UploadViewProps> = ({
     e.preventDefault();
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setSelectedFile(e.dataTransfer.files[0]);
+      const file = e.dataTransfer.files[0];
+      if (file.size > VERCEL_UPLOAD_SAFE_MAX_BYTES) {
+        alert('This file is larger than 4 MB. Vercel rejects uploads above 4.5 MB. Please export a smaller XLSX/PDF or use the local version of MOCOF for this file.');
+        return;
+      }
+      setSelectedFile(file);
     }
   };
 
@@ -116,7 +132,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
               {selectedFile ? selectedFile.name : 'Upload Chinese Supplier Quotation File'}
             </h3>
             <p className="text-xs text-slate-500 mt-1">
-              Upload the original supplier workbook (.xlsx) or quotation PDF (Max 50MB). XLSX product photos are preserved; PDF items are extracted by Gemini and flagged if a source image is unavailable.
+              Upload the original supplier workbook (.xlsx) or quotation PDF (up to 4 MB on the web app). XLSX product photos are preserved; PDF items are extracted by Gemini and flagged if a source image is unavailable.
             </p>
           </div>
 
