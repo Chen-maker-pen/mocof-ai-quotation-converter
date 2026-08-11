@@ -17,6 +17,7 @@ import {
 interface UploadViewProps {
   onProcessFile: (file?: File) => Promise<void>;
   isProcessing: boolean;
+  conversionError?: string | null;
   currentProjectName?: string;
   quotationNumber?: string;
 }
@@ -29,6 +30,7 @@ const VERCEL_UPLOAD_SAFE_MAX_BYTES = 4 * 1024 * 1024;
 export const UploadView: React.FC<UploadViewProps> = ({
   onProcessFile,
   isProcessing,
+  conversionError,
   currentProjectName,
   quotationNumber,
 }) => {
@@ -160,6 +162,17 @@ export const UploadView: React.FC<UploadViewProps> = ({
           )}
         </div>
       </div>
+
+      {conversionError && (
+        <div role="alert" className="rounded-xl border border-red-300 bg-red-50 px-5 py-4 text-left shadow-sm">
+          <p className="text-sm font-bold text-red-900">Conversion did not complete</p>
+          <p className="mt-1 break-words text-sm leading-6 text-red-800">{conversionError}</p>
+          <p className="mt-2 text-xs leading-5 text-red-700">
+            Tip: on Vercel, use an .xlsx or PDF below 4 MB. If this message mentions Gemini, check that
+            <code className="mx-1 rounded bg-red-100 px-1">GEMINI_API_KEY</code> is saved for Production and redeploy once.
+          </p>
+        </div>
+      )}
 
       {!isProcessing && <p className="text-center text-xs text-slate-500">Step 2: AI converts the quotation. Step 3: review, edit if needed, and export PDF or Excel.</p>}
 

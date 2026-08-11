@@ -29,6 +29,7 @@ export default function App() {
   const [versions, setVersions] = useState<QuoteVersion[]>([]);
   const [profile, setProfile] = useState<ConversionProfile | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [conversionError, setConversionError] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Initial Load
@@ -89,6 +90,7 @@ export default function App() {
 
   const handleProcessFile = async (file?: File) => {
     setIsProcessing(true);
+    setConversionError(null);
     try {
       if (!file) throw new Error('Choose the original Chinese supplier .xlsx or .pdf file first.');
 
@@ -113,7 +115,9 @@ export default function App() {
       // immediately. Source/audit panels are not part of the customer editor.
       setActiveTab('editor');
     } catch (err: any) {
-      showToast(err.message || 'Conversion failed', 'error');
+      const message = err.message || 'Conversion failed';
+      setConversionError(message);
+      showToast(message, 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -265,6 +269,7 @@ export default function App() {
           <UploadView
             onProcessFile={handleProcessFile}
             isProcessing={isProcessing}
+            conversionError={conversionError}
             currentProjectName={currentProject?.name}
             quotationNumber={currentProject?.quotationNumber}
           />
