@@ -72,7 +72,7 @@ class Database {
                   String(rule.instructions || '').includes('awaiting boss row-layout differences') ||
                   String(rule.label || '').includes('standard 13-row') ||
                   String(rule.instructions || '').includes('Preserve the area-specific row positions') ||
-                  !String(rule.instructions || '').includes('CHANGE THE TOP HEADINGS PROMPT:')
+                  !String(rule.instructions || '').includes('[DOCUMENTED PROMPT 1')
                 )
                   ? parsed.conversionProfile.areaPromptRules
                   : DEFAULT_CONVERSION_PROFILE.areaPromptRules,

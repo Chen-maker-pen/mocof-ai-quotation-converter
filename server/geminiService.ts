@@ -127,14 +127,18 @@ export async function processAiExtractionAndConversion(
       company: profile.companyName,
       rules: profile.rules,
       bossEditingRules: profile.bossEditingRules,
-      areaPromptRules: profile.areaPromptRules,
+      // Send every exact prompt from the single detected Area, rather than a
+      // shortened recipe or unrelated Area instructions.
+      areaPromptRules: detectedArea
+        ? profile.areaPromptRules.filter((rule) => rule.areaNumber === detectedArea)
+        : profile.areaPromptRules,
       detectedArea: detectedArea || null,
       instructionPriority: [
         'Preserve source facts and embedded photos',
         `Use detectedArea ${detectedArea || 'unknown'} when it is supplied. Count only real customer rooms/spaces to select Area 1–10; never count MOCOF add-ons or services as an area`,
         'List real rooms first in Whole House Total, then list the MOCOF service/add-on rows',
         'Apply shared boss editing rules',
-        'Apply the one area rule that matches the worksheet layout',
+        'Apply every documented prompt entry for the selected Area in its listed order',
         'Flag ambiguity for boss review instead of guessing',
       ],
       // These are compact structured product rows, so include every visible

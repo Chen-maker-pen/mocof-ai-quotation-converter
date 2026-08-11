@@ -12,6 +12,7 @@ import {
   ExceptionItem,
   AuditLog,
 } from '../src/types.js';
+import { DOCUMENTED_AREA_PROMPTS } from './documentedPrompts.js';
 
 const BOSS_EDITING_RULES = `
 Apply MOCOF Prompt Documentation rules in this order. Preserve the original Chinese workbook, source values and embedded product photos; create a customer-facing English version only.
@@ -94,14 +95,15 @@ const buildDocumentedAreaPrompts = (areaNumber: number): string[] => {
   ];
 };
 
-const DEFAULT_AREA_PROMPT_RULES = Array.from({ length: 10 }, (_, index) => {
-  const areaNumber = index + 1;
-  return {
-    areaNumber,
-    label: `Area ${areaNumber} — ${areaNumber} real room${areaNumber === 1 ? '' : 's'} only — 43 documented prompts`,
-    instructions: buildDocumentedAreaPrompts(areaNumber).join('\n'),
-  };
-});
+// The Word document is the authority.  Keep every original prompt entry,
+// including its Area-specific coordinates and wording, in the AI input.
+const DEFAULT_AREA_PROMPT_RULES = DOCUMENTED_AREA_PROMPTS.map((area) => ({
+  areaNumber: area.areaNumber,
+  label: area.label,
+  instructions: area.prompts
+    .map((prompt, index) => `[DOCUMENTED PROMPT ${index + 1} | ${prompt.category || prompt.number}]\n${prompt.text}`)
+    .join('\n\n'),
+}));
 
 export const DEFAULT_CONVERSION_PROFILE: ConversionProfile = {
   companyName: 'MOCOF SDN BHD',

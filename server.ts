@@ -18,6 +18,7 @@ import {
 } from './server/calcEngine.js';
 import { generateCustomerXlsx, generateCustomerPdf } from './server/exporter.js';
 import { Project, Quote, QuoteVersion } from './src/types.js';
+import { getDocumentedAreaPrompts } from './server/documentedPrompts.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -95,10 +96,14 @@ async function convertSupplierWorkbook(quote: Quote, originalFileName: string, b
     supplementaryItems: JSON.parse(JSON.stringify(parsedXlsx.supplementaryItems)),
   };
   const selectedAreaRule = profile.areaPromptRules.find((rule) => rule.areaNumber === parsedXlsx.detectedArea);
+  const exactDocumentedPrompts = getDocumentedAreaPrompts(parsedXlsx.detectedArea);
   quote.promptTrace = [
     `Detected Area ${parsedXlsx.detectedArea || 'not determined'} from ${parsedXlsx.sheetNames[0] || 'source workbook'}: only real room rows were counted; services/add-ons were excluded.`,
-    `Quotation document applied: ${selectedAreaRule?.label || 'Shared MOCOF rules only'}. The entries below are the selected Area’s quotation-document prompts.`,
-    ...(selectedAreaRule ? selectedAreaRule.instructions.split(/\n+/).map((line) => line.trim()).filter(Boolean) : []),
+    `Quotation document applied: ${exactDocumentedPrompts?.label || selectedAreaRule?.label || 'Shared MOCOF rules only'}. Every original prompt entry below was sent to the conversion agent in document order.`,
+    ...(exactDocumentedPrompts
+      ? exactDocumentedPrompts.prompts.map((prompt, index) =>
+          `DOCUMENTED PROMPT ${index + 1}${prompt.category ? ` — ${prompt.category}` : ''}\n${prompt.text}`)
+      : (selectedAreaRule ? selectedAreaRule.instructions.split(/\n+/).map((line) => line.trim()).filter(Boolean) : [])),
   ];
   quote.wholeHouseTotals = wholeHouseTotals;
   quote.status = hasExceptions ? 'Generated – Exceptions Need Review' : 'Generated – Ready for Approval';
