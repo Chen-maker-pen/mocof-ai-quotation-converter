@@ -87,7 +87,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(quoteData),
     });
-    if (!res.ok) throw new Error('Failed to save quote');
+    if (!res.ok) {
+      const text = await res.text();
+      const err = (() => { try { return JSON.parse(text); } catch { return null; } })();
+      throw new Error(err?.error || `Could not save draft version (HTTP ${res.status}).`);
+    }
     return res.json();
   },
 
