@@ -6,6 +6,10 @@
     }
   },
   "rewrites": [
+    {
+      "source": "/api/:mocofPath*",
+      "destination": "/api?__mocof_path=:mocofPath*"
+    },
     { "source": "/((?!api(?:/|$)).*)", "destination": "/index.html" }
   ]
 }
