@@ -28,6 +28,7 @@ import {
   Eye,
   EyeOff,
   RotateCcw,
+  TableProperties,
 } from 'lucide-react';
 
 interface QuotationEditorProps {
@@ -56,6 +57,8 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [showVersions, setShowVersions] = useState<boolean>(false);
   const [showPromptRecipe, setShowPromptRecipe] = useState<boolean>(false);
+  const [workbookMode, setWorkbookMode] = useState<'grid' | 'details'>('grid');
+  const [selectedCell, setSelectedCell] = useState<string>('E1');
   const [managerName, setManagerName] = useState<string>('Manager Tan');
 
   const rebuildRoomTotals = (updated: Quote) => {
@@ -112,6 +115,9 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
 
     updated.worksheets = JSON.parse(JSON.stringify(baseline.worksheets));
     updated.supplementaryItems = JSON.parse(JSON.stringify(baseline.supplementaryItems));
+    updated.workbookSheets = baseline.workbookSheets
+      ? JSON.parse(JSON.stringify(baseline.workbookSheets))
+      : updated.workbookSheets;
     const commands = (updated.bossPromptCommands || []).filter((command) => command.enabled && command.text.trim());
 
     commands.forEach((command) => {
@@ -256,6 +262,23 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
     }
   };
 
+  const updateGridCell = (address: string, value: string) => {
+    const updated = JSON.parse(JSON.stringify(editedQuote)) as Quote;
+    const sheet = updated.workbookSheets?.[0];
+    const cell = sheet?.cells[address];
+    if (!cell) return;
+    cell.value = value;
+    // A direct cell edit intentionally overrides a formula, just as typing in
+    // Google Sheets replaces the previous formula in that cell.
+    delete cell.formula;
+    cell.kind = 'input';
+    setEditedQuote(updated);
+  };
+
+  const gridSheet = editedQuote.workbookSheets?.[0];
+  const gridLastRow = gridSheet ? Math.min(Math.max(...Object.values(gridSheet.cells).map((cell) => cell.row), 40), 260) : 0;
+  const gridColumns = gridSheet ? Array.from({ length: gridSheet.columnCount }, (_, index) => String.fromCharCode(65 + index)) : [];
+
   const activeWorksheet = editedQuote.worksheets.find(
     (w) => w.worksheetIndex === activeSheetIndex
   ) || editedQuote.worksheets[0];
@@ -338,6 +361,14 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             {showPromptRecipe ? 'Close Prompt Recipe' : 'Show Prompt Recipe'}
           </button>
 
+          <button
+            onClick={() => setWorkbookMode(workbookMode === 'grid' ? 'details' : 'grid')}
+            className="px-3 py-2 bg-slate-900 hover:bg-black text-white text-xs font-semibold rounded-lg transition-colors inline-flex items-center"
+          >
+            <TableProperties className="w-3.5 h-3.5 mr-1.5" />
+            {workbookMode === 'grid' ? 'Show Detail Forms' : 'Show Sheet Grid'}
+          </button>
+
           {/* Save Version button */}
           <button
             onClick={handleSave}
@@ -389,6 +420,48 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
       <div className={`grid grid-cols-1 ${showPromptRecipe ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : ''} gap-4 items-start`}>
       {/* Interactive Editable Table Workspace */}
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs p-4 space-y-6 min-w-0">
+        {workbookMode === 'grid' && gridSheet ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900">{gridSheet.name} — spreadsheet grid</h3>
+                <p className="text-xs text-slate-500 mt-1">Direct cell editing is enabled. Column letters and row numbers match the quotation prompt document.</p>
+              </div>
+              <span className="font-mono text-xs rounded bg-slate-100 px-2 py-1">Selected: {selectedCell}</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+              <span className="font-mono font-bold text-slate-600 w-12">{selectedCell}</span>
+              <span className="font-mono text-slate-700 break-all">{gridSheet.cells[selectedCell]?.formula || gridSheet.cells[selectedCell]?.value || ''}</span>
+            </div>
+            <div className="overflow-auto max-h-[74vh] border border-slate-300 rounded-lg bg-white">
+              <table className="border-collapse min-w-[1120px] text-xs">
+                <thead className="sticky top-0 z-20 bg-slate-100 text-slate-700">
+                  <tr><th className="sticky left-0 z-30 min-w-11 border border-slate-300 bg-slate-200 p-2"></th>{gridColumns.map((letter) => <th key={letter} className="min-w-28 border border-slate-300 p-2 font-bold">{letter}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: gridLastRow }, (_, index) => index + 1).map((row) => (
+                    <tr key={row}>
+                      <th className="sticky left-0 z-10 border border-slate-300 bg-slate-100 px-2 py-1 text-right font-mono text-slate-500">{row}</th>
+                      {gridColumns.map((letter, columnIndex) => {
+                        const cellAddress = `${letter}${row}`;
+                        const cell = gridSheet.cells[cellAddress];
+                        const isTitle = cell?.kind === 'title';
+                        const isHeader = cell?.kind === 'header';
+                        const isTotal = cell?.kind === 'total';
+                        return <td key={cellAddress} className={`border border-slate-200 p-0 align-middle ${isTitle ? 'bg-[#0b1f3a] text-white font-bold' : isHeader ? 'bg-slate-200 font-bold' : isTotal ? 'bg-blue-50 font-bold text-red-600' : ''}`}>
+                          {cell ? <input aria-label={cellAddress} value={cell.formula || cell.value} onFocus={() => setSelectedCell(cellAddress)} onChange={(event) => updateGridCell(cellAddress, event.target.value)} className={`h-8 w-full min-w-0 border-0 bg-transparent px-2 outline-none focus:bg-amber-50 focus:ring-2 focus:ring-inset focus:ring-blue-500 ${isTitle ? 'text-white' : ''} ${columnIndex >= 5 ? 'font-mono text-right' : ''}`} /> : <button aria-label={`Select ${cellAddress}`} onClick={() => setSelectedCell(cellAddress)} className="h-8 w-full text-left hover:bg-blue-50" />}
+                        </td>;
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11px] text-slate-500">Formula cells show their exact formulas. If you type in one, it becomes a manual override—exactly like Google Sheets. Save Draft Version stores these cell changes.</p>
+          </div>
+        ) : null}
+
+        <div className={workbookMode === 'grid' ? 'hidden' : ''}>
         <div className="flex items-center justify-between border-b border-slate-200 pb-3">
           <h3 className="font-extrabold text-base text-slate-900">
             {activeWorksheet ? activeWorksheet.name : 'Worksheet Editor'}
@@ -721,6 +794,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
               ))}
             </div>
           )}
+        </div>
         </div>
       </div>
 

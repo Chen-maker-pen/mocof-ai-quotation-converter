@@ -154,6 +154,32 @@ export interface QuoteWorksheet {
   totalCents: number;
 }
 
+/**
+ * A real spreadsheet cell used by the customer workbook.  Keeping the address
+ * (for example I2 or J44) is essential because the approved MOCOF prompt
+ * document refers to exact cells and ranges, rather than only business fields.
+ */
+export interface WorkbookCell {
+  address: string;
+  row: number;
+  column: number;
+  value: string | number;
+  /** Excel/Google Sheets formula, without losing the formula audit trail. */
+  formula?: string;
+  /** Small presentation hint for the web grid and XLSX export. */
+  kind?: 'title' | 'header' | 'total' | 'formula' | 'input' | 'text';
+}
+
+/** One editable customer sheet with visible A, B, C … columns and row numbers. */
+export interface CustomerWorkbookSheet {
+  id: string;
+  name: string;
+  rowCount: number;
+  columnCount: number;
+  cells: Record<string, WorkbookCell>;
+  mergedRanges?: string[];
+}
+
 /** A boss-entered command that is applied to a preserved conversion baseline. */
 export interface BossPromptCommand {
   id: string;
@@ -165,6 +191,7 @@ export interface BossPromptCommand {
 export interface PromptRecipeBaseline {
   worksheets: QuoteWorksheet[];
   supplementaryItems: SupplementaryItem[];
+  workbookSheets?: CustomerWorkbookSheet[];
 }
 
 export interface Quote {
@@ -184,6 +211,8 @@ export interface Quote {
   /** Preserved initial conversion so removing a command restores the table accurately. */
   promptRecipeBaseline?: PromptRecipeBaseline;
   worksheets: QuoteWorksheet[];
+  /** Spreadsheet-first customer output. This is the source of A1/J44 edits. */
+  workbookSheets?: CustomerWorkbookSheet[];
   supplementaryItems: SupplementaryItem[];
   wholeHouseTotals: WholeHouseTotals;
   termsAndConditions: string[];

@@ -19,6 +19,7 @@ import {
 import { generateCustomerXlsx, generateCustomerPdf } from './server/exporter.js';
 import { Project, Quote, QuoteVersion } from './src/types.js';
 import { getDocumentedAreaPrompts } from './server/documentedPrompts.js';
+import { buildCustomerWorkbookGrid } from './server/customerWorkbookGrid.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -91,9 +92,16 @@ async function convertSupplierWorkbook(quote: Quote, originalFileName: string, b
   // always starts from this baseline, so removing a boss command restores the
   // table instead of stacking irreversible edits on top of an old version.
   quote.bossPromptCommands = [];
+  // Build an addressable A:J workbook after formulas and translations are
+  // finalised.  The prompt document uses cell references (E1, I2, J44…);
+  // storing this grid makes those instructions auditable and editable.
+  quote.workbookSheets = buildCustomerWorkbookGrid(quote, project || {
+    id: quote.projectId, name: '', customerName: '', customerPhone: '', customerEmail: '', projectAddress: '', quotationNumber: '', status: 'Processing', currency: quote.currency, createdAt: '', updatedAt: '', currentQuoteId: quote.id, totalMYRCents: 0,
+  });
   quote.promptRecipeBaseline = {
     worksheets: JSON.parse(JSON.stringify(updatedWorksheets)),
     supplementaryItems: JSON.parse(JSON.stringify(parsedXlsx.supplementaryItems)),
+    workbookSheets: JSON.parse(JSON.stringify(quote.workbookSheets)),
   };
   const selectedAreaRule = profile.areaPromptRules.find((rule) => rule.areaNumber === parsedXlsx.detectedArea);
   const exactDocumentedPrompts = getDocumentedAreaPrompts(parsedXlsx.detectedArea);

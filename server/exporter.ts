@@ -22,6 +22,59 @@ export async function generateCustomerXlsx(
   workbook.creator = 'MOCOF AI Integrated Quotation System';
   workbook.created = new Date();
 
+  // The document recipes address fixed cells (E1, I2, J44 …). When an
+  // addressable customer grid exists, export that same grid rather than
+  // rebuilding a different layout from cards. This keeps browser edits and
+  // XLSX cell references identical.
+  if (quote.workbookSheets?.length) {
+    const navy = 'FF08275B';
+    const border: Partial<ExcelJS.Borders> = {
+      top: { style: 'thin', color: { argb: 'FFB8C0CC' } }, bottom: { style: 'thin', color: { argb: 'FFB8C0CC' } }, left: { style: 'thin', color: { argb: 'FFB8C0CC' } }, right: { style: 'thin', color: { argb: 'FFB8C0CC' } },
+    };
+    quote.workbookSheets.forEach((sheet) => {
+      const ws = workbook.addWorksheet(sheet.name);
+      ws.views = [{ showGridLines: true, state: 'frozen', ySplit: 6, xSplit: 1 }];
+      ws.columns = Array.from({ length: sheet.columnCount }, (_, index) => ({ width: index === 1 || index === 3 ? 28 : 16 }));
+      (sheet.mergedRanges || []).forEach((range) => { try { ws.mergeCells(range); } catch { /* keep export resilient to legacy ranges */ } });
+      Object.values(sheet.cells).forEach((cell) => {
+        const target = ws.getCell(cell.address);
+        target.value = cell.formula ? { formula: cell.formula } : cell.value;
+        target.alignment = { vertical: 'middle', wrapText: true, horizontal: cell.column >= 6 ? 'right' : 'left' };
+        target.border = border;
+        if (cell.kind === 'title') {
+          target.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: navy } };
+          target.font = { name: 'Arial', size: 12, bold: true, color: { argb: 'FFFFFFFF' } };
+          target.alignment = { horizontal: 'center', vertical: 'middle' };
+        } else if (cell.kind === 'header') {
+          target.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EDF4' } };
+          target.font = { name: 'Arial', size: 10, bold: true };
+        } else if (cell.kind === 'total') {
+          target.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE7F7DE' } };
+          target.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFF0000' } };
+        }
+        if (cell.column >= 6 && (typeof cell.value === 'number' || cell.formula)) target.numFmt = '"RM" #,##0.00;[Red]-"RM" #,##0.00';
+      });
+      // Keep supplier product photos in the exported grid. Grid rows contain
+      // a “Photo preserved” marker in column B for every source item.
+      const productImages = quote.worksheets.flatMap((worksheet) => worksheet.rooms.flatMap((room) => room.sections.flatMap((section) => section.items.filter((item) => item.isVisibleToCustomer && item.imageUrl?.startsWith('data:image/')))));
+      let imageIndex = 0;
+      Object.values(sheet.cells)
+        .filter((cell) => cell.column === 2 && cell.value === 'Photo preserved')
+        .sort((a, b) => a.row - b.row)
+        .forEach((marker) => {
+          const item = productImages[imageIndex++];
+          if (!item?.imageUrl) return;
+          const imageId = workbook.addImage({ base64: item.imageUrl, extension: item.imageUrl.includes('image/png') ? 'png' : 'jpeg' });
+          ws.getRow(marker.row).height = 36;
+          ws.addImage(imageId, { tl: { col: 1, row: marker.row - 1 }, ext: { width: 34, height: 34 } });
+        });
+      ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+      ws.pageSetup.printArea = `A1:J${sheet.rowCount}`;
+    });
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  }
+
   // Color Palette
   const darkGreenFill = {
     type: 'pattern',
