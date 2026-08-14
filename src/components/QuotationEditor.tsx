@@ -122,6 +122,8 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
       : updated.workbookSheets;
     const commands = (updated.bossPromptCommands || []).filter((command) => command.enabled && command.text.trim());
 
+    let appliedCount = 0;
+    const notApplied: string[] = [];
     commands.forEach((command) => {
       const text = command.text.trim();
       const hideRoom = text.match(/^HIDE ROOM\s*:\s*(.+)$/i);
@@ -130,17 +132,50 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
       const setDiscount = text.match(/^SET DISCOUNT\s*:\s*(\d+(?:\.\d+)?)%$/i);
       const removeSupplementary = text.match(/^REMOVE SUPPLEMENTARY\s*:\s*(.+)$/i);
       const addSupplementary = text.match(/^ADD SUPPLEMENTARY\s*:\s*([^|]+)\|\s*([\d.]+)\|\s*([\d.]+)\|\s*([\d.]+)$/i);
+      // Natural cell prompt example (the wording the boss used):
+      // “In J7 (After Price) is 20% discount of I7 (Before Price).”
+      // It is intentionally handled before the broader business commands.
+      const cellDiscount = text.match(/\b([A-J]\d+)\b[\s\S]*?\b(\d+(?:\.\d+)?)%\s*(?:discount|off)[\s\S]*?\b(?:of|from)\s*\(?([A-J]\d+)\b/i);
+      const directFormula = text.match(/^(?:SET\s+)?CELL\s+([A-J]\d+)\s*(?:=|TO)\s*(.+)$/i) || text.match(/^([A-J]\d+)\s*=\s*(.+)$/i);
+      const grid = updated.workbookSheets?.[0];
 
-      if (hideRoom) {
+      if (cellDiscount && grid) {
+        const [, targetAddressRaw, percentRaw, sourceAddressRaw] = cellDiscount;
+        const targetAddress = targetAddressRaw.toUpperCase();
+        const sourceAddress = sourceAddressRaw.toUpperCase();
+        const source = grid.cells[sourceAddress];
+        const target = grid.cells[targetAddress];
+        const sourceValue = Number(source?.value);
+        const discount = Math.min(100, Math.max(0, Number(percentRaw)));
+        if (source && target && Number.isFinite(sourceValue)) {
+          target.value = Number((sourceValue * (1 - discount / 100)).toFixed(2));
+          target.formula = `${sourceAddress}*(1-${discount}%)`;
+          target.kind = 'formula';
+          appliedCount++;
+        } else notApplied.push(text);
+      } else if (directFormula && grid) {
+        const targetAddress = directFormula[1].toUpperCase();
+        const expression = directFormula[2].trim().replace(/^=/, '');
+        const target = grid.cells[targetAddress];
+        if (target) {
+          const literal = Number(expression);
+          target.value = Number.isFinite(literal) ? literal : target.value;
+          target.formula = Number.isFinite(literal) ? undefined : expression;
+          target.kind = Number.isFinite(literal) ? 'input' : 'formula';
+          appliedCount++;
+        } else notApplied.push(text);
+      } else if (hideRoom) {
         const term = hideRoom[1].toLowerCase();
         updated.worksheets.forEach((worksheet) => {
           worksheet.rooms = worksheet.rooms.filter((room) => !`${room.roomNameEnglish} ${room.roomNameChinese}`.toLowerCase().includes(term));
         });
+        appliedCount++;
       } else if (showOnlyRooms) {
         const allowed = showOnlyRooms[1].split(',').map((name) => name.trim().toLowerCase()).filter(Boolean);
         updated.worksheets.forEach((worksheet) => {
           worksheet.rooms = worksheet.rooms.filter((room) => allowed.some((name) => `${room.roomNameEnglish} ${room.roomNameChinese}`.toLowerCase().includes(name)));
         });
+        appliedCount++;
       } else if (renameRoom) {
         const from = renameRoom[1].trim().toLowerCase();
         const to = renameRoom[2].trim();
@@ -151,6 +186,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             room.sections.forEach((section) => section.items.forEach((item) => { item.roomName = to; }));
           }
         }));
+        appliedCount++;
       } else if (setDiscount) {
         const discountPercent = Math.min(100, Math.max(0, Number(setDiscount[1])));
         updated.worksheets.forEach((worksheet) => worksheet.rooms.forEach((room) => room.sections.forEach((section) => section.items.forEach((item) => {
@@ -158,9 +194,11 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
           item.discountCents = Math.round(item.totalAmountCents * (discountPercent / 100));
           item.finalAmountCents = Math.max(0, item.totalAmountCents - item.discountCents);
         }))));
+        appliedCount++;
       } else if (removeSupplementary) {
         const term = removeSupplementary[1].trim().toLowerCase();
         updated.supplementaryItems = updated.supplementaryItems.filter((item) => !item.description.toLowerCase().includes(term));
+        appliedCount++;
       } else if (addSupplementary) {
         const [, description, perValue, quantity, afterPrice] = addSupplementary;
         const unitPriceCents = Math.round(Number(afterPrice) * 100);
@@ -170,10 +208,16 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
           unitPriceCents, totalAmountCents: Math.round(Number(quantity) * unitPriceCents),
           notes: `Boss Prompt: ${text}`,
         });
+        appliedCount++;
+      } else {
+        notApplied.push(text);
       }
     });
     rebuildRoomTotals(updated);
     setEditedQuote(updated);
+    window.alert(appliedCount > 0
+      ? `${appliedCount} prompt${appliedCount === 1 ? '' : 's'} applied. Click Save Draft Version to keep the changes.${notApplied.length ? ` ${notApplied.length} prompt(s) need a supported cell or command format.` : ''}`
+      : `No prompt was applied. Use a cell command such as “J7 is 20% discount of I7” or “CELL J7 = I7*(1-20%)”.`);
   };
 
   // Handle inline item update
@@ -819,7 +863,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             <h4 className="text-[11px] uppercase tracking-wide font-extrabold text-emerald-700">Boss Custom Prompts</h4>
             <button onClick={addBossPrompt} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold"><Plus className="w-3 h-3 inline mr-1" />Add</button>
           </div>
-          <p className="text-[10px] leading-4 text-slate-600">Supported commands: <b>HIDE ROOM: name</b>; <b>SHOW ONLY ROOMS: room, room</b>; <b>RENAME ROOM: old =&gt; new</b>; <b>SET DISCOUNT: 20%</b>; <b>REMOVE SUPPLEMENTARY: name</b>; <b>ADD SUPPLEMENTARY: name | sqft/per | qty | after price</b>.</p>
+          <p className="text-[10px] leading-4 text-slate-600">Cell prompts are supported: <b>J7 is 20% discount of I7</b>; <b>CELL J7 = I7*(1-20%)</b>; <b>CELL E1 = MOCOF Whole House Quotation</b>. Other commands: <b>HIDE ROOM: name</b>; <b>SHOW ONLY ROOMS: room, room</b>; <b>RENAME ROOM: old =&gt; new</b>; <b>SET DISCOUNT: 20%</b>; <b>REMOVE SUPPLEMENTARY: name</b>; <b>ADD SUPPLEMENTARY: name | sqft/per | qty | after price</b>.</p>
           {(editedQuote.bossPromptCommands || []).map((command) => (
             <div key={command.id} className="flex gap-2 items-start">
               <input type="checkbox" checked={command.enabled} onChange={(e) => updateBossPrompt(command.id, { enabled: e.target.checked })} className="mt-2 accent-emerald-600" title="Enable this prompt" />
