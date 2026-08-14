@@ -57,7 +57,9 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [showVersions, setShowVersions] = useState<boolean>(false);
   const [showPromptRecipe, setShowPromptRecipe] = useState<boolean>(false);
-  const [workbookMode, setWorkbookMode] = useState<'grid' | 'details'>('grid');
+  const [workbookMode, setWorkbookMode] = useState<'grid' | 'details'>(() =>
+    quote.workbookSheets?.length ? 'grid' : 'details'
+  );
   const [selectedCell, setSelectedCell] = useState<string>('E1');
   const [managerName, setManagerName] = useState<string>('Manager Tan');
 
