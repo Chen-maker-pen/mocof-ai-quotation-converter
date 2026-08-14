@@ -8,6 +8,12 @@ import { ConversionProfile, QuoteItem, ExceptionItem } from '../src/types.js';
 
 let aiClient: GoogleGenAI | null = null;
 
+// Vercel Hobby functions have a short request ceiling.  Keep a generous
+// margin for Excel parsing and workbook generation, then complete through the
+// deterministic documented-rule path if Gemini is slow or temporarily busy.
+const GEMINI_REQUEST_TIMEOUT_MS = 30_000;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
 function getGeminiClient(): GoogleGenAI | null {
   if (!aiClient && process.env.GEMINI_API_KEY) {
     aiClient = new GoogleGenAI({
@@ -16,6 +22,10 @@ function getGeminiClient(): GoogleGenAI | null {
         headers: {
           'User-Agent': 'aistudio-build',
         },
+        timeout: GEMINI_REQUEST_TIMEOUT_MS,
+        // A retry can exceed Vercel's runtime ceiling. One attempt lets the
+        // normal XLSX fallback finish the customer quotation reliably.
+        retryOptions: { attempts: 1 },
       },
     });
   }
@@ -56,7 +66,7 @@ export async function extractPdfQuotation(buffer: Buffer): Promise<PdfQuotationE
   }
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3.6-flash',
+    model: GEMINI_MODEL,
     contents: [{
       role: 'user',
       parts: [
@@ -147,7 +157,7 @@ export async function processAiExtractionAndConversion(
     };
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: GEMINI_MODEL,
       contents: JSON.stringify(jsonPrompt),
       config: {
         systemInstruction: `${EXTRACTOR_SYSTEM_PROMPT}\n\n${CONVERSION_SYSTEM_PROMPT}\n\nThe supplied bossEditingRules and areaPromptRules are mandatory. Identify the matching area from worksheet headings and table row boundaries. If the area is unknown or its custom rules are awaiting confirmation, apply only the shared rules and return an exception describing the missing area layout.`,
