@@ -185,6 +185,10 @@ export interface BossPromptCommand {
   id: string;
   text: string;
   enabled: boolean;
+  /** An auditable result of the last Apply Prompts transaction. */
+  status?: 'pending' | 'applied' | 'needs_review' | 'failed';
+  appliedAt?: string;
+  resultSummary?: string;
 }
 
 /** The unchanged initial customer workbook used when boss prompts are re-applied. */

@@ -95,6 +95,23 @@ export const api = {
     return res.json();
   },
 
+  async applyWorkbookPrompts(quoteId: string, prompts: string[], cells: Array<{ address: string; value: string | number; formula?: string }>): Promise<{
+    operations: Array<{ promptIndex: number; address: string; value?: string | number; formula?: string; explanation: string }>;
+    summaries: string[];
+  }> {
+    const res = await fetch(`/api/quotes/${quoteId}/apply-prompts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompts, cells }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      const error = (() => { try { return JSON.parse(text); } catch { return null; } })();
+      throw new Error(error?.error || `AI prompt transaction failed (HTTP ${res.status}).`);
+    }
+    return res.json();
+  },
+
   // Resolve Exception
   async resolveException(
     quoteId: string,

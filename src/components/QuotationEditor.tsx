@@ -30,6 +30,7 @@ import {
   RotateCcw,
   TableProperties,
 } from 'lucide-react';
+import { api } from '../services/api.js';
 
 interface QuotationEditorProps {
   quote: Quote;
@@ -107,7 +108,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
    * small, visible command language rather than pretending that arbitrary
    * prose can safely alter financial totals without a deterministic rule.
    */
-  const applyBossPrompts = () => {
+  const applyBossPrompts = async () => {
     const baseline = editedQuote.promptRecipeBaseline;
     const updated = JSON.parse(JSON.stringify(editedQuote)) as Quote;
     if (!baseline) {
@@ -213,10 +214,53 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
         notApplied.push(text);
       }
     });
+    // The small local parser handles safe, explicit operations immediately.
+    // Any other boss wording is submitted to Gemini as a constrained A1-cell
+    // transaction, with the full selected Area recipe as mandatory context.
+    const grid = updated.workbookSheets?.[0];
+    const aiCommands = commands.filter((command) => notApplied.includes(command.text));
+    if (grid && aiCommands.length) {
+      try {
+        const transaction = await api.applyWorkbookPrompts(
+          updated.id,
+          aiCommands.map((command) => command.text),
+          Object.values(grid.cells).map((cell) => ({ address: cell.address, value: cell.value, formula: cell.formula }))
+        );
+        const appliedByAi = new Set<number>();
+        transaction.operations.forEach((operation) => {
+          const target = grid.cells[operation.address];
+          if (!target) return;
+          if (operation.value !== undefined) target.value = operation.value;
+          target.formula = operation.formula;
+          target.kind = operation.formula ? 'formula' : 'input';
+          appliedByAi.add(operation.promptIndex);
+          appliedCount++;
+        });
+        const now = new Date().toISOString();
+        const aiCommandIds = aiCommands.map((command) => command.id);
+        updated.bossPromptCommands = (updated.bossPromptCommands || []).map((command) => {
+          const aiIndex = aiCommandIds.indexOf(command.id);
+          if (aiIndex < 0) return { ...command, status: command.enabled ? 'applied' : command.status, appliedAt: command.enabled ? now : command.appliedAt, resultSummary: command.enabled ? 'Applied by deterministic workbook rule.' : command.resultSummary };
+          const wasApplied = appliedByAi.has(aiIndex);
+          return {
+            ...command,
+            status: wasApplied ? 'applied' : 'needs_review',
+            appliedAt: now,
+            resultSummary: wasApplied ? (transaction.summaries[aiIndex] || 'Applied as AI-reviewed spreadsheet cell transaction.') : (transaction.summaries[aiIndex] || 'No safe cell transaction was returned; please make this instruction more specific.'),
+          };
+        });
+      } catch (error: any) {
+        const message = error?.message || 'The AI prompt transaction could not be completed.';
+        updated.bossPromptCommands = (updated.bossPromptCommands || []).map((command) => notApplied.includes(command.text) ? { ...command, status: 'failed', resultSummary: message } : command);
+      }
+    } else {
+      const now = new Date().toISOString();
+      updated.bossPromptCommands = (updated.bossPromptCommands || []).map((command) => command.enabled ? { ...command, status: notApplied.includes(command.text) ? 'needs_review' : 'applied', appliedAt: now, resultSummary: notApplied.includes(command.text) ? 'Use a valid A1 cell reference or a clearer instruction.' : 'Applied by deterministic workbook rule.' } : command);
+    }
     rebuildRoomTotals(updated);
     setEditedQuote(updated);
     window.alert(appliedCount > 0
-      ? `${appliedCount} prompt${appliedCount === 1 ? '' : 's'} applied. Click Save Draft Version to keep the changes.${notApplied.length ? ` ${notApplied.length} prompt(s) need a supported cell or command format.` : ''}`
+      ? `${appliedCount} cell transaction${appliedCount === 1 ? '' : 's'} applied. Click Save Draft Version to keep the changes. Check Applied Prompt Transactions below the prompt box for every result.`
       : `No prompt was applied. Use a cell command such as “J7 is 20% discount of I7” or “CELL J7 = I7*(1-20%)”.`);
   };
 
@@ -872,6 +916,16 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             </div>
           ))}
           <button onClick={applyBossPrompts} className="w-full px-3 py-2 bg-[#5f6faf] hover:bg-[#4e5d99] text-white rounded-lg text-xs font-extrabold inline-flex items-center justify-center"><RotateCcw className="w-3.5 h-3.5 mr-1.5" />Apply Prompts to Table</button>
+          {(editedQuote.bossPromptCommands || []).some((command) => command.status) && (
+            <div className="border-t border-slate-200 pt-2 space-y-1.5">
+              <h5 className="text-[10px] uppercase tracking-wide font-extrabold text-slate-600">Applied Prompt Transactions</h5>
+              {(editedQuote.bossPromptCommands || []).filter((command) => command.status).map((command) => (
+                <div key={`${command.id}-result`} className={`rounded border px-2 py-1.5 text-[10px] leading-4 ${command.status === 'applied' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : command.status === 'failed' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                  <b className="uppercase">{command.status?.replace('_', ' ')}</b> — {command.resultSummary || 'Pending transaction'}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="max-h-[52vh] overflow-y-auto divide-y divide-slate-100">

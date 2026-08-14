@@ -10,7 +10,7 @@ import multer from 'multer';
 import { db } from './server/db.js';
 import { fetchLiveExchangeRates, lockRateSnapshot, createRateSnapshot } from './server/exchange.js';
 import { parseSupplierXlsxBuffer, parseSupplierPdfBuffer } from './server/xlsxParser.js';
-import { processAiExtractionAndConversion } from './server/geminiService.js';
+import { processAiExtractionAndConversion, createWorkbookPromptTransactions } from './server/geminiService.js';
 import {
   recalculateWorksheet,
   calculateWholeHouseTotals,
@@ -302,6 +302,26 @@ export async function createApp() {
     }
   });
 
+  // Apply boss-entered natural-language prompts as auditable A1 cell
+  // operations. The client reviews the returned operations in the live grid
+  // and saves the draft only after it is satisfied.
+  app.post('/api/quotes/:id/apply-prompts', async (req, res) => {
+    try {
+      const quote = db.getQuoteById(req.params.id);
+      if (!quote) return res.status(404).json({ error: 'Quote not found' });
+      const prompts = Array.isArray(req.body?.prompts) ? req.body.prompts.map(String).filter((prompt: string) => prompt.trim()).slice(0, 20) : [];
+      const cells = Array.isArray(req.body?.cells) ? req.body.cells : [];
+      if (!prompts.length) return res.status(400).json({ error: 'Add at least one enabled boss prompt first.' });
+      if (!cells.length) return res.status(400).json({ error: 'This quotation has no spreadsheet grid. Upload and convert the source quotation again.' });
+      const areaRecipe = getDocumentedAreaPrompts(quote.detectedArea || 0);
+      const result = await createWorkbookPromptTransactions(prompts, cells, areaRecipe?.prompts.map((prompt) => `${prompt.category}\n${prompt.text}`) || []);
+      res.json(result);
+    } catch (err: any) {
+      console.error('Prompt transaction endpoint error:', err);
+      res.status(500).json({ error: err.message || 'Could not apply prompts to the workbook.' });
+    }
+  });
+
   // Save / Update Quote State (Full Quotation Editor Workspace)
   app.put('/api/quotes/:id', (req, res) => {
     const quoteId = req.params.id;
@@ -310,7 +330,7 @@ export async function createApp() {
       return res.status(404).json({ error: 'Quote not found' });
     }
 
-    const { worksheets, supplementaryItems, notes, versionLabel, bossPromptCommands, promptRecipeBaseline } = req.body;
+    const { worksheets, supplementaryItems, notes, versionLabel, bossPromptCommands, promptRecipeBaseline, workbookSheets } = req.body;
     const profile = db.getConversionProfile();
     const rateValue = existingQuote.exchangeRate.rate || 0.652;
 
@@ -340,6 +360,7 @@ export async function createApp() {
       notes: notes || existingQuote.notes,
       bossPromptCommands: Array.isArray(bossPromptCommands) ? bossPromptCommands : existingQuote.bossPromptCommands,
       promptRecipeBaseline: promptRecipeBaseline || existingQuote.promptRecipeBaseline,
+      workbookSheets: Array.isArray(workbookSheets) ? workbookSheets : existingQuote.workbookSheets,
     };
 
     db.saveQuote(updatedQuote);

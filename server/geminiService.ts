@@ -54,6 +54,83 @@ export interface PdfQuotationExtraction {
   }>;
 }
 
+export interface WorkbookPromptOperation {
+  promptIndex: number;
+  address: string;
+  value?: string | number;
+  formula?: string;
+  explanation: string;
+}
+
+/**
+ * Converts a boss's natural-language instruction into small, reviewable cell
+ * transactions. The browser applies only these returned A1/J44 operations;
+ * Gemini is never allowed to invent rows, totals, or hidden data structures.
+ */
+export async function createWorkbookPromptTransactions(
+  prompts: string[],
+  cells: Array<{ address: string; value: string | number; formula?: string }>,
+  documentedPrompts: string[]
+): Promise<{ operations: WorkbookPromptOperation[]; summaries: string[] }> {
+  const ai = getGeminiClient();
+  if (!ai) throw new Error('Applying natural-language prompts requires GEMINI_API_KEY. Add it in Vercel, then redeploy.');
+
+  const response = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: JSON.stringify({
+      task: 'Apply boss instructions to the existing MOCOF customer quotation spreadsheet.',
+      rules: [
+        'The supplied quotation document rules are the mandatory base recipe already used to create this workbook. Respect every rule and do not contradict it.',
+        'Return only changes requested by the boss prompts. Do not rebuild or delete unrelated cells.',
+        'Every operation must target an existing A1-style cell address from the supplied grid.',
+        'For discounts or calculations return an Excel formula without a leading equals sign, and return the calculated value only when it is certain.',
+        'Never invent a price, product, customer fact, room, or quantity. If a requested change is unclear, return no operation for it and explain this in summaries.',
+      ],
+      documentedAreaRecipe: documentedPrompts,
+      bossPrompts: prompts.map((text, promptIndex) => ({ promptIndex, text })),
+      existingCells: cells,
+    }),
+    config: {
+      systemInstruction: 'You are a careful spreadsheet quotation assistant. Return only schema-valid JSON. Financial accuracy and traceability are mandatory.',
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          operations: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                promptIndex: { type: Type.INTEGER },
+                address: { type: Type.STRING },
+                value: { type: Type.STRING },
+                formula: { type: Type.STRING },
+                explanation: { type: Type.STRING },
+              },
+              required: ['promptIndex', 'address', 'explanation'],
+            },
+          },
+          summaries: { type: Type.ARRAY, items: { type: Type.STRING } },
+        },
+        required: ['operations', 'summaries'],
+      },
+    },
+  });
+  const parsed = JSON.parse(response.text || '{}');
+  const validAddresses = new Set(cells.map((cell) => cell.address.toUpperCase()));
+  const operations = (Array.isArray(parsed.operations) ? parsed.operations : [])
+    .filter((operation: any) => Number.isInteger(operation.promptIndex) && validAddresses.has(String(operation.address || '').toUpperCase()))
+    .slice(0, 80)
+    .map((operation: any) => ({
+      promptIndex: operation.promptIndex,
+      address: String(operation.address).toUpperCase(),
+      value: operation.value,
+      formula: operation.formula ? String(operation.formula).replace(/^=/, '') : undefined,
+      explanation: String(operation.explanation || 'Applied to workbook cell.'),
+    }));
+  return { operations, summaries: Array.isArray(parsed.summaries) ? parsed.summaries.map(String).slice(0, prompts.length) : [] };
+}
+
 /**
  * PDFs do not contain the editable worksheet grid that Excel templates have.
  * Gemini reads the PDF and returns a source-shaped structure; the normal
