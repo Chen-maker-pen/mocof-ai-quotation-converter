@@ -28,8 +28,8 @@ const EXACT_PRODUCT_TRANSLATIONS: Record<string, string> = {
 };
 
 const ROOM_TRANSLATIONS: Array<[RegExp, string]> = [
-  [/主卧/, 'Master Bedroom'], [/客餐厅|客餐/, 'Living and Dining'], [/卫生间|浴室/, 'Vanity'],
-  [/客卧/, 'Guest Bedroom'], [/书房/, 'Study Room'], [/门厅/, 'Foyer'], [/厨房/, 'Kitchen'],
+  [/主卧|master bedroom/i, 'Master Bedroom'], [/客餐厅|客餐|guest restaurant|living and dining/i, 'Living and Dining'], [/卫生间|浴室|vanity/i, 'Vanity'],
+  [/客卧|guest bedroom/i, 'Guest Bedroom'], [/书房|study/i, 'Study Room'], [/门厅|porch|foyer/i, 'Foyer'], [/厨房|kitchen/i, 'Kitchen'],
   [/多功能/, 'Multipurpose Room'], [/儿童房/, 'Kids Room'],
 ];
 

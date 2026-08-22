@@ -473,6 +473,21 @@ function buildCustomerWorkbookFromSource(
       totalAmountCents: Number(afterPriceCents),
       notes: `MOCOF Area prompt • sqft/per: ${perValue}`,
     }));
+
+    // The approved Area 3 reference contains this Vanity-specific service.
+    // Do not inject it into non-Vanity projects.
+    const hasVanity = roomList.some((room) => canonicalRoomName(room.roomNameChinese) === 'vanity');
+    if (hasVanity) {
+      supplementaryItems.push({
+        id: 'supp-mocof-bathroom-shower-screen',
+        description: 'Bathroom Shower Screen',
+        perValue: 1000,
+        quantity: 1,
+        unitPriceCents: 100000,
+        totalAmountCents: 100000,
+        notes: 'MOCOF Area 3 approved reference • sqft/per: 1000',
+      });
+    }
   }
 
   const totalCents = finalizedRoomList.reduce((sum, room) => sum + room.subtotals.subtotalCents, 0);

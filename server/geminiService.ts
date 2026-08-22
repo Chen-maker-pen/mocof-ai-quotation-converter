@@ -5,6 +5,7 @@
 
 import { GoogleGenAI, Type } from '@google/genai';
 import { ConversionProfile, QuoteItem, ExceptionItem } from '../src/types.js';
+import { getReferenceConversionRecipe } from './referenceRecipes.js';
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -220,6 +221,9 @@ export async function processAiExtractionAndConversion(
         ? profile.areaPromptRules.filter((rule) => rule.areaNumber === detectedArea)
         : profile.areaPromptRules,
       detectedArea: detectedArea || null,
+      // Historical approved patterns guide the model only for the same Area.
+      // Values always come from the current workbook, never from a reference.
+      approvedReferenceRecipe: getReferenceConversionRecipe(detectedArea),
       instructionPriority: [
         'Preserve source facts and embedded photos',
         `Use detectedArea ${detectedArea || 'unknown'} when it is supplied. Count only real customer rooms/spaces to select Area 1–10; never count MOCOF add-ons or services as an area`,
