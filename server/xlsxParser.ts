@@ -444,21 +444,22 @@ function buildCustomerWorkbookFromSource(
   // The MOCOF prompt requires the standard Supplementary table even if the
   // Chinese supplier workbook does not contain it.
   if (supplementaryItems.length === 0) {
-    // Area prompt: first five After Price values start at 0; the remaining
-    // MOCOF services use the approved reference starting prices and remain
-    // editable by the boss in the workbook.
+    // The prompt document defines the service names and sqft/per inputs, but
+    // not universal prices.  A price varies by project and must come from the
+    // source quotation or a documented/boss cell instruction.  Start blank
+    // rather than copying values from a previous customer sample.
     [
       ['Defect Check before start work', 1, 0],
       ['3D & 2D design and submission', 5, 0],
       ['Project management', 6, 0],
       ['Post reno cleaning', 1, 0],
       ['Floor Protection (Floor guard)', 1, 0],
-      ['Electrical', 19, 456000],
-      ['Plaster ceiling', 10, 480000],
-      ['Painting with white paint', 9, 432000],
+      ['Electrical', 19, 0],
+      ['Plaster ceiling', 10, 0],
+      ['Painting with white paint', 9, 0],
       ['Paint with 3 colour Nippon colors', 12, 0],
       ['Partition (normal w/o sound proof)', 24, 0],
-      ['Curtain with Blind per window H 8-9ft', 43, 800000],
+      ['Curtain with Blind per window H 8-9ft', 43, 0],
       ['Hacking & Removal', 77, 0],
       ['Grout', 6.5, 0],
       ['Mirror', 50, 0],

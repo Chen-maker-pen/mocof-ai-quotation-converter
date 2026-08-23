@@ -28,7 +28,9 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   const worksheet = quote.worksheets.find((sheet) => sheet.code === 'whole_house') || quote.worksheets[0];
   const rooms = worksheet?.rooms || [];
 
-  // Header cells are exactly where the documented recipe expects them.
+  // Header cells are exactly where the documented recipe expects them.  This
+  // is intentionally an A:J grid, not a separate dashboard table: every
+  // prompt in the source document refers to these coordinates.
   put(1, 5, 'MOCOF Whole House Quotation', 'title');
   putRow(2, ['', '', '', '', 'Customer Name', project.customerName, 'Currency', quote.exchangeRate.rate, 'Discount', 0.9]);
   putRow(3, ['', '', '', '', 'Address', project.projectAddress, 'Budget', '', '', '']);
@@ -39,7 +41,13 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   let row = 7;
   rooms.forEach((room, index) => {
     const amounts = roomAmounts(room);
+    // Never substitute a package price or a discount.  The source-derived
+    // amounts remain visible and formula references document where the
+    // package columns came from.  The Area recipe / boss prompt can change a
+    // cell deliberately; it must not be guessed by the converter.
     putRow(row, [index + 1, `${room.roomNameEnglish}${room.roomNameChinese && room.roomNameChinese !== room.roomNameEnglish ? ` // ${room.roomNameChinese}` : ''}`, '', '', '', amounts.after, amounts.after, amounts.software, amounts.before, amounts.after], 'input');
+    put(row, 6, amounts.after, 'formula', `J${row}`);
+    put(row, 7, amounts.after, 'formula', `J${row}`);
     row++;
   });
   // These are services/add-ons, not rooms. They are always after the detected room rows.
@@ -60,8 +68,16 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   quote.supplementaryItems.forEach((supp, index) => {
     const per = supplementaryPerValue(supp);
     const after = money(supp.totalAmountCents);
-    const before = after > 0 ? Number((after / 0.8).toFixed(2)) : Number((per * 600 * supp.quantity).toFixed(2));
+    // `sqft / per` and the project sqft are inputs in the MOCOF document.
+    // Do not invent a hard-coded 600 sqft or reverse an assumed 80% discount.
+    // If the source has an explicit supplementary price it is preserved;
+    // otherwise the formula is left as an editable, auditable formula.
+    const before = after;
     putRow(row, [index + 1, supp.description, '', per, supp.quantity, index < 5 ? 0 : after, index < 5 ? 0 : after, after, before, after], 'input');
+    put(row, 9, before, 'formula', `D${row}*$F$4*E${row}`);
+    put(row, 10, after, 'formula', index < 5 ? '0' : `I${row}*$I$3`);
+    put(row, 6, index < 5 ? 0 : after, 'formula', `J${row}`);
+    put(row, 7, index < 5 ? 0 : after, 'formula', `J${row}`);
     row++;
   });
   const supplementaryTotalRow = row;

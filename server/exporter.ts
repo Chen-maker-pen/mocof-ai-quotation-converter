@@ -172,7 +172,9 @@ export async function generateCustomerXlsx(
   quote.supplementaryItems.forEach((item, index) => {
     const perValue = item.perValue ?? Number(String(item.notes || '').match(/[\d.]+$/)?.[0] || 0);
     const afterPrice = item.totalAmountCents / 100;
-    const beforePrice = afterPrice > 0 ? afterPrice / 0.8 : perValue * 600 * item.quantity;
+    // Never reconstruct a Before Price by assuming a universal 80% discount
+    // or 600 sqft.  The source/documented recipe must provide that value.
+    const beforePrice = afterPrice;
     const packagePrice = index < 5 ? 0 : afterPrice;
     const row = wsWholeHouse.addRow([index + 1, item.description, perValue || '', item.quantity, packagePrice, packagePrice, afterPrice, beforePrice, afterPrice]);
     for (let col = 5; col <= 9; col++) row.getCell(col).numFmt = currencyFormat;

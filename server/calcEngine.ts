@@ -72,16 +72,23 @@ export function recalculateWorksheet(
       let sectionTotalCents = 0;
 
       const updatedItems: QuoteItem[] = section.items.map((item) => {
-        // MOCOF quotation-document rule: source item price becomes Before Price,
-        // then customer After Price is the documented 80% value. Do not apply
-        // the former exchange-rate/markup calculation to customer table prices.
+        // The source item price is the only safe starting value for a new
+        // conversion.  The previous implementation silently applied 20% off
+        // every item when no instruction had actually selected that discount.
+        // That produced invented customer prices (for example RM 43,005 became
+        // RM 34,404) and is not acceptable for a quotation.  A discount is now
+        // applied only when the documented recipe / a boss command explicitly
+        // supplies `discountPercentOverride`; otherwise Before and After stay
+        // equal until the recipe transaction updates the relevant A1 cells.
         // A merged Combi group carries its source price on the first row only;
         // following component rows correctly remain zero so it is not double-counted.
         const quantity = Math.max(1, Number(item.quantity) || 1);
         const unitPriceCents = Math.max(0, Math.round(item.supplierPriceCents));
         const totalAmountCents = unitPriceCents * quantity;
-        const discountPercent = item.discountPercentOverride ?? 20;
-        const discountCents = Math.round(totalAmountCents * (Math.min(100, Math.max(0, discountPercent)) / 100));
+        const discountPercent = item.discountPercentOverride;
+        const discountCents = discountPercent === undefined
+          ? 0
+          : Math.round(totalAmountCents * (Math.min(100, Math.max(0, discountPercent)) / 100));
         const finalAmountCents = totalAmountCents - discountCents;
 
         const updatedItem: QuoteItem = {

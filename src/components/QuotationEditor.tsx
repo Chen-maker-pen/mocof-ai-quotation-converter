@@ -284,12 +284,15 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
       if (item) {
         (item as any)[field] = value;
 
-        // Recalculate item unit price cents & total amount cents
+        // Recalculate only from explicit values.  Do not silently reapply a
+        // generic 20% discount whenever a user changes a quantity.
         if (field === 'quantity' || field === 'unitPriceCents' || field === 'discountCents') {
           const qty = Math.max(1, Number(item.quantity) || 1);
           const unitCents = Math.max(0, Number(item.unitPriceCents) || 0);
           item.totalAmountCents = qty * unitCents;
-          item.discountCents = Math.round(item.totalAmountCents * 0.2);
+          item.discountCents = item.discountPercentOverride === undefined
+            ? 0
+            : Math.round(item.totalAmountCents * (item.discountPercentOverride / 100));
           item.finalAmountCents = Math.max(0, item.totalAmountCents - item.discountCents);
         }
         break;
@@ -324,8 +327,8 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
       description: 'New Custom Renovation Accessory / Installation Service',
       perValue: 1,
       quantity: 1,
-      unitPriceCents: 150000, // MYR 1,500.00
-      totalAmountCents: 150000,
+      unitPriceCents: 0,
+      totalAmountCents: 0,
     };
     const updated = {
       ...editedQuote,
@@ -385,13 +388,12 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
   const supplementaryPerValue = (supp: SupplementaryItem) =>
     supp.perValue ?? Number(String(supp.notes || '').match(/[\d.]+$/)?.[0] || 0);
 
-  // The quotation document makes the first five Supplementary After Price
-  // values complimentary, while Before Price remains sqft/per × project sqft.
-  // The original MOCOF Area samples use 600 sqft when a source sqft has not
-  // yet been supplied; the row remains editable for manager review.
+  // Keep source amounts unchanged.  An Area recipe may create a formula from
+  // sqft/per and the customer sqft, but 600 sqft and an 80% discount must
+  // never be silently invented by the UI.
   const supplementaryAmounts = (supp: SupplementaryItem, index: number) => {
     const after = Math.max(0, supp.quantity * supp.unitPriceCents);
-    const before = after > 0 ? Math.round(after / 0.8) : Math.round(supplementaryPerValue(supp) * 600 * supp.quantity * 100);
+    const before = after;
     const packagePrice = index < 5 ? 0 : after;
     return { before, after, packagePrice };
   };
