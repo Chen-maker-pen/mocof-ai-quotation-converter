@@ -19,10 +19,14 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   const money = (cents: number) => Number((cents / 100).toFixed(2));
   const roomAmounts = (room: QuoteRoom) => {
     const items = room.sections.flatMap((section) => section.items).filter((item) => item.isVisibleToCustomer);
+    const sourceSummary = room.sourceSummaryCents;
     return {
       software: money(items.reduce((sum, item) => sum + item.supplierPriceCents * item.quantity, 0)),
-      before: money(items.reduce((sum, item) => sum + item.totalAmountCents, 0)),
-      after: money(items.reduce((sum, item) => sum + item.finalAmountCents, 0)),
+      // Summary values are the authoritative source reconciliation figures.
+      // A specific Area recipe may later write a conversion/discount formula
+      // into this grid, but the baseline must never invent a new price.
+      before: sourceSummary === undefined ? money(items.reduce((sum, item) => sum + item.totalAmountCents, 0)) : money(sourceSummary),
+      after: sourceSummary === undefined ? money(items.reduce((sum, item) => sum + item.finalAmountCents, 0)) : money(sourceSummary),
     };
   };
   const worksheet = quote.worksheets.find((sheet) => sheet.code === 'whole_house') || quote.worksheets[0];

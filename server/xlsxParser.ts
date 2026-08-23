@@ -263,7 +263,7 @@ function buildCustomerWorkbookFromSource(
   );
   const wholeRows = wholeEntry?.[1] || [];
   const headerIndex = findRoomSummaryHeaderIndex(wholeRows);
-  const rooms: { name: string; chinese: string }[] = [];
+  const rooms: { name: string; chinese: string; sourceSummaryCents?: number }[] = [];
   if (headerIndex >= 0) {
     const header = wholeRows[headerIndex].map(cellText);
     const roomColumnIndex = header.findIndex((cell) => /^(space|room\s*type|空间|房间类型)$/i.test(cell));
@@ -273,7 +273,20 @@ function buildCustomerWorkbookFromSource(
       if (!cells.join(' ')) continue;
       if (totalPattern.test(cells.join(' ')) || /^supplementary|补充/i.test(cells.join(' '))) break;
       if (servicePattern.test(name)) break;
-      if (/^\d+$/.test(cells[0]) && name) rooms.push({ name, chinese: name });
+      if (/^\d+$/.test(cells[0]) && name) {
+        // The right-most numeric value in a supplier summary is its
+        // authoritative room total. It is safer than summing detail rows
+        // because the supplier often merges one price across a group of rows.
+        const numbers = row
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value));
+        const sourceSummary = numbers.length ? numbers[numbers.length - 1] : 0;
+        rooms.push({
+          name,
+          chinese: name,
+          sourceSummaryCents: sourceSummary > 0 ? Math.round(sourceSummary * 100) : undefined,
+        });
+      }
     }
   }
 
@@ -298,6 +311,7 @@ function buildCustomerWorkbookFromSource(
       id: `room-${index + 1}`,
       roomNameEnglish: displayName,
       roomNameChinese: room.chinese,
+      sourceSummaryCents: room.sourceSummaryCents,
       sections: [] as QuoteSection[],
       subtotals: { roomName: displayName, itemCount: 0, subtotalCents: 0 },
     };

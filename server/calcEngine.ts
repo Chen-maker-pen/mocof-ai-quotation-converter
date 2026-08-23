@@ -114,7 +114,12 @@ export function recalculateWorksheet(
       };
     });
 
-    roomTotalCents = updatedSections.reduce((sum, sec) => sum + sec.sectionTotalCents, 0);
+    const detailedTotalCents = updatedSections.reduce((sum, sec) => sum + sec.sectionTotalCents, 0);
+    // Do not replace the supplier's summary total with a reconstruction from
+    // detailed rows. The source uses merged group-price cells, and a row-by-
+    // row sum can overcharge the customer. Keep that summary as the room
+    // reconciliation amount; detail tables remain editable and auditable.
+    roomTotalCents = room.sourceSummaryCents ?? detailedTotalCents;
 
     return {
       ...room,

@@ -38,7 +38,13 @@ async function convertSupplierWorkbook(quote: Quote, originalFileName: string, b
       section.items.map((item) => [item.sourceRowIndex, item.itemCode, item.nameChinese, room.roomNameChinese, section.sectionName, item.dimensionText])
     ))
   );
-  const aiResult = await processAiExtractionAndConversion(translationRows, profile, parsedXlsx.detectedArea);
+  // Upload conversion must complete even when Gemini is unavailable or slow.
+  // The spreadsheet recipe, source totals and deterministic translations are
+  // enough to create the editable baseline. AI enrichment is opt-in so Vercel
+  // Hobby functions do not time out before the user can review the quote.
+  const aiResult = process.env.MOCOF_ENABLE_GEMINI_TRANSLATION === 'true'
+    ? await processAiExtractionAndConversion(translationRows.slice(0, 80), profile, parsedXlsx.detectedArea)
+    : { translatedItems: [], exceptions: [] };
   // Gemini supplies English names for recognised source SKUs. The parser keeps
   // the original Chinese source row as the fallback, never a demo placeholder.
   const translationsBySku = new Map(

@@ -124,6 +124,12 @@ export interface QuoteRoom {
   id: string;
   roomNameEnglish: string;
   roomNameChinese: string;
+  /**
+   * Authoritative room total read from the supplier's Whole-House summary.
+   * Detail tables may contain merged group prices, so their visible rows must
+   * never silently replace this reconciliation value.
+   */
+  sourceSummaryCents?: number;
   subtotals: RoomSubtotal;
   sections: QuoteSection[];
 }
