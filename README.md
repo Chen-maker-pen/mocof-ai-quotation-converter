@@ -6,16 +6,34 @@ MOCOF AI Quotation Converter is a web application for renovation and custom-join
 
 **Live application:** [mocof-ai-quotation-converter-2siq.vercel.app](https://mocof-ai-quotation-converter-2siq.vercel.app/)
 
-## What it does
+## What it does today
 
 - Upload Chinese supplier Excel (`.xlsx`) quotations or PDF quotations.
 - Detect the quotation Area (Area 1–10) by counting real rooms only—not services such as Extra m², Curve, Wall Panel, or add-ons.
-- Apply the selected Area’s documented MOCOF conversion prompts in the conversion workflow.
+- Store, select and trace the selected Area's documented MOCOF conversion prompts in the conversion workflow.
 - Translate source product descriptions into professional English while retaining source information for review.
 - Keep Whole House Total, Supplementary, room tables, product details, and supplier product photos.
 - Review and edit the quotation in an A–J spreadsheet grid with row numbers and cell references such as `E1`, `I2`, and `J44`.
 - Add boss instructions in plain English and apply them as audited AI cell transactions.
 - Export the reviewed customer quotation as Excel or PDF.
+
+## Important implementation status
+
+The full MOCOF Prompt Documentation is preserved in
+[`server/documentedPrompts.ts`](server/documentedPrompts.ts): **415 exact
+prompt entries across Areas 1-10**. The app can detect an Area, display its
+exact recipe, construct an editable A:J workbook, and apply audited
+manager-entered prompt transactions.
+
+However, a complete deterministic executor for every documented instruction,
+formula, merge and cell coordinate across all ten Areas is still in progress.
+The current generic workbook must be reviewed by an authorised MOCOF manager;
+it must not be described as a fully automatic replacement for the approved
+Google Sheets workflow yet. Fang and Joyce are validation examples only, never
+fixed production prices or templates.
+
+See the complete current-state handover:
+[MOCOF_Quotation_Converter_Project_Handover.pdf](output/pdf/MOCOF_Quotation_Converter_Project_Handover.pdf).
 
 ## Main workflow
 
@@ -24,7 +42,7 @@ Upload Chinese quotation
         ↓
 Detect Area and read source tables
         ↓
-Apply MOCOF Area recipe and AI translation
+Select MOCOF Area recipe and parse/translate source content
         ↓
 Review / edit the customer spreadsheet
         ↓
@@ -92,6 +110,15 @@ Open [http://localhost:3000](http://localhost:3000).
 ## Important review practice
 
 AI prepares the quotation, but prices, discounts, formulas, product specifications, and customer details must be reviewed by an authorised MOCOF manager before sending the final customer version. The original supplier workbook is retained as the source record, while the customer workbook is the editable output.
+
+## Handover and next development work
+
+The next developer should implement an `AreaRecipeExecutor` that runs every
+selected Area prompt in documented order against a template/workbook with the
+same A1 cell coordinates used by the original Google Sheets process. It should
+write a prompt-to-cell transaction log and have approved fixture tests for
+Areas 1-10. See the PDF handover for the full implementation plan, deployment
+notes and known Vercel/Gemini limitations.
 
 ## Repository structure
 
