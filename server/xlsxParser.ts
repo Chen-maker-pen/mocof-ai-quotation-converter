@@ -8,7 +8,6 @@ import JSZip from 'jszip';
 import { SourceImage, QuoteItem, QuoteWorksheet, QuoteRoom, QuoteSection, SupplementaryItem } from '../src/types.js';
 import { translateProductName, translateRoomName, translateSectionName } from './customerTranslations.js';
 import { extractPdfQuotation } from './geminiService.js';
-import { SAMPLE_PRODUCT_IMAGES } from './seedData.js';
 
 export interface ParsedXlsxResult {
   sheetNames: string[];
@@ -19,6 +18,7 @@ export interface ParsedXlsxResult {
   totalSupplierCNY: number;
   parsedWorksheets: QuoteWorksheet[];
   supplementaryItems: SupplementaryItem[];
+  customerSqft?: number;
 }
 
 export async function parseSupplierXlsxBuffer(
@@ -71,22 +71,8 @@ export async function parseSupplierXlsxBuffer(
     console.warn('Zip image extraction warning (fallback images used):', err);
   }
 
-  // Ensure we have fallbacks if XLSX had no extracted zip images
-  if (extractedImages.length === 0) {
-    const sampleKeys = Object.keys(SAMPLE_PRODUCT_IMAGES) as (keyof typeof SAMPLE_PRODUCT_IMAGES)[];
-    sampleKeys.forEach((key, idx) => {
-      extractedImages.push({
-        id: `img-sample-${idx + 1}`,
-        sourceDocumentId: originalFileName,
-        sheetName: 'Whole-House Details',
-        rowRef: idx + 4,
-        colRef: 1,
-        imageId: `sample-${key}`,
-        mimeType: 'image/jpeg',
-        dataUrl: SAMPLE_PRODUCT_IMAGES[key],
-      });
-    });
-  }
+  // Never add stock/sample photos. If the raw quotation has no embedded
+  // product photo, leave the image cell empty and flag it for review.
 
   // 2. Read Worksheets
   workbook.eachSheet((worksheet, sheetId) => {
@@ -127,6 +113,7 @@ export async function parseSupplierXlsxBuffer(
   }
 
   const detectedArea = detectQuotationArea(rawRowsBySheet);
+  const customerSqft = extractCustomerSqft(rawRowsBySheet);
 
   // 3. Build the customer workbook from the actual source rows. Do not use
   // seeded demo products: every room/item must trace back to this upload.
@@ -141,7 +128,24 @@ export async function parseSupplierXlsxBuffer(
     totalSupplierCNY,
     parsedWorksheets: parsedWorkbook.worksheets,
     supplementaryItems: parsedWorkbook.supplementaryItems,
+    customerSqft,
   };
+}
+
+function extractCustomerSqft(rawRowsBySheet: Record<string, any[][]>): number | undefined {
+  for (const rows of Object.values(rawRowsBySheet)) {
+    for (const rawRow of rows) {
+      const row = rawRow.map(cellText);
+      for (let index = 0; index < row.length; index++) {
+        if (!/sq\.?ft|平方尺|面积|建面/i.test(row[index])) continue;
+        const candidates = row.slice(index + 1, index + 4)
+          .map((value) => Number(String(value).replace(/[^\d.]/g, '')))
+          .filter((value) => Number.isFinite(value) && value >= 50 && value <= 50000);
+        if (candidates[0]) return candidates[0];
+      }
+    }
+  }
+  return undefined;
 }
 
 /** Converts a source PDF into the same source-shaped grid used by the XLSX parser. */

@@ -228,6 +228,8 @@ export interface Quote {
   exchangeRate: ExchangeRateSnapshot;
   /** Number of true room/space rows detected before MOCOF service/add-on rows. */
   detectedArea?: number;
+  /** Sqft explicitly found in the uploaded supplier document, when present. */
+  sourceCustomerSqft?: number;
   /** Read-only audit trail of the prompt instructions applied to this upload. */
   promptTrace?: string[];
   documentedPromptExecutions?: DocumentedPromptExecution[];

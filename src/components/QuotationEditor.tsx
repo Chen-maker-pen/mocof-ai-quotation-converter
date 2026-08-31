@@ -30,6 +30,7 @@ import {
   RotateCcw,
   TableProperties,
 } from 'lucide-react';
+import { evaluateWorkbookCell } from '../lib/formulaEvaluator';
 import { api } from '../services/api.js';
 
 interface QuotationEditorProps {
@@ -541,7 +542,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
                         const isHeader = cell?.kind === 'header';
                         const isTotal = cell?.kind === 'total';
                         return <td key={cellAddress} className={`border border-slate-200 p-0 align-middle ${isTitle ? 'bg-[#0b1f3a] text-white font-bold' : isHeader ? 'bg-slate-200 font-bold' : isTotal ? 'bg-blue-50 font-bold text-red-600' : ''}`}>
-                          {cell ? <input aria-label={cellAddress} value={cell.formula || cell.value} onFocus={() => setSelectedCell(cellAddress)} onChange={(event) => updateGridCell(cellAddress, event.target.value)} className={`h-8 w-full min-w-0 border-0 bg-transparent px-2 outline-none focus:bg-amber-50 focus:ring-2 focus:ring-inset focus:ring-blue-500 ${isTitle ? 'text-white' : ''} ${columnIndex >= 5 ? 'font-mono text-right' : ''}`} /> : <button aria-label={`Select ${cellAddress}`} onClick={() => setSelectedCell(cellAddress)} className="h-8 w-full text-left hover:bg-blue-50" />}
+                          {cell ? <input aria-label={cellAddress} title={cell.formula ? `Formula: =${cell.formula}` : undefined} value={cell.formula ? (evaluateWorkbookCell(gridSheet, cellAddress) ?? '') : cell.value} onFocus={() => setSelectedCell(cellAddress)} onChange={(event) => updateGridCell(cellAddress, event.target.value)} className={`h-8 w-full min-w-0 border-0 bg-transparent px-2 outline-none focus:bg-amber-50 focus:ring-2 focus:ring-inset focus:ring-blue-500 ${isTitle ? 'text-white' : ''} ${columnIndex >= 5 ? 'font-mono text-right' : ''}`} /> : <button aria-label={`Select ${cellAddress}`} onClick={() => setSelectedCell(cellAddress)} className="h-8 w-full text-left hover:bg-blue-50" />}
                         </td>;
                       })}
                     </tr>

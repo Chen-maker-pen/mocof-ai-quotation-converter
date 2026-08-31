@@ -45,7 +45,7 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   // I3 is the separately documented supplementary discount cell. It must not
   // be mistaken for the whole-house discount in I2.
   putRow(3, ['', '', '', '', 'Address', project.projectAddress, 'Budget', '', 'Supplementary discount', 0.8]);
-  putRow(4, ['', '', '', '', 'Sqft', '', 'RM/sqft', '', '', '']);
+  putRow(4, ['', '', '', '', 'Sqft', quote.sourceCustomerSqft || '', 'RM/sqft', '', '', '']);
   put(5, 1, 'Whole House Total', 'title');
   putRow(6, ['No.', 'Space', '', 'Wall Panel (m²)', 'Cabinet (m²)', 'RM49800', 'RM79800', 'Software Price', 'Before Price', 'After Price'], 'header');
 

@@ -95,6 +95,7 @@ async function convertSupplierWorkbook(quote: Quote, originalFileName: string, b
   const hasExceptions = aiResult.exceptions.length > 0;
   quote.worksheets = updatedWorksheets;
   quote.detectedArea = parsedXlsx.detectedArea || undefined;
+  quote.sourceCustomerSqft = parsedXlsx.customerSqft;
   // Keep a clean, source-derived customer workbook. The Prompt Recipe editor
   // always starts from this baseline, so removing a boss command restores the
   // table instead of stacking irreversible edits on top of an old version.
