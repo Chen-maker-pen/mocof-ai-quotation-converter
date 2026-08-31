@@ -197,6 +197,20 @@ export interface BossPromptCommand {
   resultSummary?: string;
 }
 
+/**
+ * One auditable result for an instruction in the approved Area prompt
+ * document.  It is deliberately separate from boss-entered prompts: a
+ * customer/boss can see exactly what the converter did, and what still needs
+ * an explicit business decision, before exporting a quotation.
+ */
+export interface DocumentedPromptExecution {
+  promptNumber: number;
+  category: string;
+  instruction: string;
+  status: 'applied' | 'partially_applied' | 'needs_review';
+  result: string;
+}
+
 /** The unchanged initial customer workbook used when boss prompts are re-applied. */
 export interface PromptRecipeBaseline {
   worksheets: QuoteWorksheet[];
@@ -216,6 +230,7 @@ export interface Quote {
   detectedArea?: number;
   /** Read-only audit trail of the prompt instructions applied to this upload. */
   promptTrace?: string[];
+  documentedPromptExecutions?: DocumentedPromptExecution[];
   /** Optional boss commands layered on top of the documented Area recipe. */
   bossPromptCommands?: BossPromptCommand[];
   /** Preserved initial conversion so removing a command restores the table accurately. */

@@ -21,13 +21,16 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   const roomAmounts = (room: QuoteRoom) => {
     const items = room.sections.flatMap((section) => section.items).filter((item) => item.isVisibleToCustomer);
     const sourceSummary = room.sourceSummaryCents;
+    const reconstructed = money(items.reduce((sum, item) => sum + item.totalAmountCents, 0));
+    const authoritative = sourceSummary === undefined ? reconstructed : money(sourceSummary);
     return {
-      software: money(items.reduce((sum, item) => sum + item.supplierPriceCents * item.quantity, 0)),
-      // Summary values are the authoritative source reconciliation figures.
-      // A specific Area recipe may later write a conversion/discount formula
-      // into this grid, but the baseline must never invent a new price.
-      before: sourceSummary === undefined ? money(items.reduce((sum, item) => sum + item.totalAmountCents, 0)) : money(sourceSummary),
-      after: sourceSummary === undefined ? money(items.reduce((sum, item) => sum + item.finalAmountCents, 0)) : money(sourceSummary),
+      // The recipe starts by copying the supplier's summary price from H to I
+      // and J.  Therefore H must use the same authoritative supplier value,
+      // not a separate reconstruction of detail rows (which may repeat merged
+      // Combi prices and caused the previous incorrect totals).
+      software: authoritative,
+      before: authoritative,
+      after: authoritative,
     };
   };
   const worksheet = quote.worksheets.find((sheet) => sheet.code === 'whole_house') || quote.worksheets[0];
@@ -53,9 +56,9 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
     // amounts remain visible and formula references document where the
     // package columns came from.  The Area recipe / boss prompt can change a
     // cell deliberately; it must not be guessed by the converter.
-    putRow(row, [index + 1, `${room.roomNameEnglish}${room.roomNameChinese && room.roomNameChinese !== room.roomNameEnglish ? ` // ${room.roomNameChinese}` : ''}`, '', '', '', amounts.after, amounts.after, amounts.software, amounts.before, amounts.after], 'input');
-    put(row, 6, amounts.after, 'formula', `J${row}`);
-    put(row, 7, amounts.after, 'formula', `J${row}`);
+    putRow(row, [index + 1, `${room.roomNameEnglish}${room.roomNameChinese && room.roomNameChinese !== room.roomNameEnglish ? ` // ${room.roomNameChinese}` : ''}`, '', '', '', 0, 0, amounts.software, amounts.before, amounts.after], 'input');
+    // F/G are package columns, not copies of the room total. The documented
+    // Area recipes populate them only when their package formula applies.
     row++;
   });
   // These are services/add-ons, not rooms. They are always after the detected room rows.

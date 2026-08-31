@@ -931,12 +931,26 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
         </div>
 
         <div className="max-h-[52vh] overflow-y-auto divide-y divide-slate-100">
+          {editedQuote.documentedPromptExecutions && editedQuote.documentedPromptExecutions.length > 0 && (
+            <div className="p-3 bg-slate-50 border-b border-slate-200">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-[11px] uppercase tracking-wide font-extrabold text-slate-700">Recipe execution ledger</span>
+                <span className="text-[10px] text-slate-500">{editedQuote.documentedPromptExecutions.length} documented prompts</span>
+              </div>
+              <p className="text-[10px] leading-4 text-slate-600">Applied means the documented worksheet operation was made. Partially applied means its required source cells are prepared but must be checked. Review means the instruction needs a boss decision or unavailable source value.</p>
+            </div>
+          )}
           <div className="p-3 bg-slate-50 flex items-center justify-between"><span className="text-[11px] uppercase tracking-wide font-extrabold text-slate-700">Area Document Audit</span><span className="text-[10px] text-slate-500">Read-only base</span></div>
           {(editedQuote.promptTrace || []).map((prompt, index) => (
             <div key={`${index}-${prompt.slice(0, 20)}`} className="p-3">
               <div className="text-[10px] uppercase tracking-wide font-bold text-emerald-700 mb-1">
                 {index === 0 ? 'Analysis' : index === 1 ? 'Selected quotation document' : `Quotation document prompt ${String(index - 1).padStart(2, '0')}`}
               </div>
+              {editedQuote.documentedPromptExecutions?.[index - 2] && (
+                <div className={`mb-2 rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${editedQuote.documentedPromptExecutions[index - 2].status === 'applied' ? 'bg-emerald-50 text-emerald-800' : editedQuote.documentedPromptExecutions[index - 2].status === 'partially_applied' ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
+                  {editedQuote.documentedPromptExecutions[index - 2].status.replace('_', ' ')} — {editedQuote.documentedPromptExecutions[index - 2].result}
+                </div>
+              )}
               <p className="text-xs leading-5 text-slate-700 whitespace-pre-wrap">{prompt}</p>
             </div>
           ))}

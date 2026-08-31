@@ -1,4 +1,5 @@
 import { getDocumentedAreaPrompts } from './documentedPrompts.js';
+import { DocumentedPromptExecution } from '../src/types.js';
 
 /**
  * The prompt document is written for a spreadsheet, not for a card UI.  This
@@ -87,3 +88,41 @@ export const DOCUMENTED_SUPPLEMENTARY_ROWS = [
   ['Grout', 6.5],
   ['Mirror', 50],
 ] as const;
+
+/**
+ * Create a truthful execution ledger for the selected Area recipe.  The old
+ * UI showed every prompt but gave the impression that every prose instruction
+ * had run.  Some instructions require a specific supplier layout, a price
+ * source which is absent, or a human action (for example inserting a logo).
+ * Those must be visible as review work instead of being silently faked.
+ */
+export function buildDocumentedPromptExecution(areaNumber?: number): DocumentedPromptExecution[] {
+  const recipe = getDocumentedAreaPrompts(areaNumber);
+  if (!recipe) return [];
+
+  return recipe.prompts.map((prompt, index) => {
+    const text = `${prompt.category}\n${prompt.text}`;
+    let status: DocumentedPromptExecution['status'] = 'needs_review';
+    let result = 'Requires the original workbook layout or a boss-approved source value.';
+
+    if (/TOP HEADINGS|CHANGE THE TITLE|FILL IN THE CUSTOMER DETAILS|CLEAR THE CONTENT|INSERT EXTRA|SERIAL NUMBER FOR WHOLE HOUSE|CREATE TOTAL PRICE FOR "WHOLE|SUPPLEMENTARY TABLE|ADD THE NAME OF CONTENT|SERIAL NUMBER FOR SUPPLEMENTARY|CREATE TOTAL PRICE FOR "SUPPLEMENTARY|TOTAL WHOLE HOUSE PRICE|UNIT\/PRICE|HIGHLIGHT THE CHEAPEST|TRANSLATE THE HEADING|TRANSLATE THE SMALL TABLE|TRANSLATE TABLE|TRANSLATE COMBI/i.test(text)) {
+      status = 'applied';
+      result = 'Applied to the editable A:J customer worksheet using this Area’s documented rows and labels.';
+    }
+    if (/PACKAGES FORMULA|DEDUCT DESIGN FEE|INSERT THE CONTENT AND FORMULA|49800 & 79800|CONNECT THE WHOLE HOUSE|CABINET TOTAL|After Price|DISCOUNT|CONVERSION|M&E Work|Merge the cells|Insert this Logo/i.test(text)) {
+      status = 'partially_applied';
+      result = 'Worksheet structure/formula target is prepared. The exact result is applied only when the referenced source cells and required inputs exist; otherwise it remains visible for boss review.';
+    }
+    if (/BY MANUAL WORK|no need deduct design fee/i.test(text)) {
+      status = 'needs_review';
+      result = 'This instruction requires a project-specific boss decision and is not guessed by the converter.';
+    }
+    return {
+      promptNumber: prompt.number || index + 1,
+      category: prompt.category || `Documented prompt ${index + 1}`,
+      instruction: prompt.text,
+      status,
+      result,
+    };
+  });
+}

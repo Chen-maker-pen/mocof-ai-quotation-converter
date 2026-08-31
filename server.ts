@@ -20,6 +20,7 @@ import { generateCustomerXlsx, generateCustomerPdf } from './server/exporter.js'
 import { Project, Quote, QuoteVersion } from './src/types.js';
 import { getDocumentedAreaPrompts } from './server/documentedPrompts.js';
 import { buildCustomerWorkbookGrid } from './server/customerWorkbookGrid.js';
+import { buildDocumentedPromptExecution } from './server/documentedRecipeExecutor.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -111,9 +112,10 @@ async function convertSupplierWorkbook(quote: Quote, originalFileName: string, b
   };
   const selectedAreaRule = profile.areaPromptRules.find((rule) => rule.areaNumber === parsedXlsx.detectedArea);
   const exactDocumentedPrompts = getDocumentedAreaPrompts(parsedXlsx.detectedArea);
+  quote.documentedPromptExecutions = buildDocumentedPromptExecution(parsedXlsx.detectedArea);
   quote.promptTrace = [
     `Detected Area ${parsedXlsx.detectedArea || 'not determined'} from ${parsedXlsx.sheetNames[0] || 'source workbook'}: only real room rows were counted; services/add-ons were excluded.`,
-    `Workbook workflow selected: ${exactDocumentedPrompts?.label || selectedAreaRule?.label || 'Shared MOCOF rules only'}. The generated grid uses the document's spreadsheet coordinates and formulas where they are unambiguous; every original prompt entry is displayed below for audit. Any source value that cannot be safely derived is preserved or flagged for review rather than replaced with a sample price.`,
+    `Workbook workflow selected: ${exactDocumentedPrompts?.label || selectedAreaRule?.label || 'Shared MOCOF rules only'}. Every original prompt is shown with an execution result. The converter applies deterministic spreadsheet rules and preserves source-derived values; a prompt that needs unavailable source cells, a logo, or a boss pricing decision is explicitly marked for review rather than replaced with a sample price.`,
     ...(exactDocumentedPrompts
       ? exactDocumentedPrompts.prompts.map((prompt, index) =>
           `DOCUMENTED PROMPT ${index + 1}${prompt.category ? ` — ${prompt.category}` : ''}\n${prompt.text}`)

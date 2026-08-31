@@ -5,6 +5,7 @@
 
 import { GoogleGenAI, Type } from '@google/genai';
 import { ConversionProfile, QuoteItem, ExceptionItem } from '../src/types.js';
+import { getDocumentedAreaPrompts } from './documentedPrompts.js';
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -209,6 +210,7 @@ export async function processAiExtractionAndConversion(
   }
 
   try {
+    const exactAreaDocument = detectedArea ? getDocumentedAreaPrompts(detectedArea) : undefined;
     const jsonPrompt = {
       action: 'EXTRACT_AND_CONVERT',
       company: profile.companyName,
@@ -216,8 +218,11 @@ export async function processAiExtractionAndConversion(
       bossEditingRules: profile.bossEditingRules,
       // Send every exact prompt from the single detected Area, rather than a
       // shortened recipe or unrelated Area instructions.
-      areaPromptRules: detectedArea
-        ? profile.areaPromptRules.filter((rule) => rule.areaNumber === detectedArea)
+      // Use the full source document, line-by-line. The profile summary is
+      // retained only as supplemental company policy; it must never replace
+      // the Area recipe supplied by the boss.
+      areaPromptRules: exactAreaDocument
+        ? exactAreaDocument.prompts.map((prompt) => ({ number: prompt.number, category: prompt.category, text: prompt.text }))
         : profile.areaPromptRules,
       detectedArea: detectedArea || null,
       instructionPriority: [
