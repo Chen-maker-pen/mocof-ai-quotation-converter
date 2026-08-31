@@ -1,4 +1,5 @@
 import { CustomerWorkbookSheet, Project, Quote, QuoteRoom, SupplementaryItem, WorkbookCell } from '../src/types.js';
+import { DOCUMENTED_SUPPLEMENTARY_ROWS, getDocumentedRecipeLayout } from './documentedRecipeExecutor.js';
 
 const columns = 'ABCDEFGHIJ'.split('');
 const address = (row: number, column: number) => `${columns[column - 1] || 'A'}${row}`;
@@ -31,18 +32,21 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   };
   const worksheet = quote.worksheets.find((sheet) => sheet.code === 'whole_house') || quote.worksheets[0];
   const rooms = worksheet?.rooms || [];
+  const layout = getDocumentedRecipeLayout(quote.detectedArea || rooms.length);
 
   // Header cells are exactly where the documented recipe expects them.  This
   // is intentionally an A:J grid, not a separate dashboard table: every
   // prompt in the source document refers to these coordinates.
   put(1, 5, 'MOCOF Whole House Quotation', 'title');
   putRow(2, ['', '', '', '', 'Customer Name', project.customerName, 'Currency', quote.exchangeRate.rate, 'Discount', 0.9]);
-  putRow(3, ['', '', '', '', 'Address', project.projectAddress, 'Budget', '', '', '']);
+  // I3 is the separately documented supplementary discount cell. It must not
+  // be mistaken for the whole-house discount in I2.
+  putRow(3, ['', '', '', '', 'Address', project.projectAddress, 'Budget', '', 'Supplementary discount', 0.8]);
   putRow(4, ['', '', '', '', 'Sqft', '', 'RM/sqft', '', '', '']);
   put(5, 1, 'Whole House Total', 'title');
   putRow(6, ['No.', 'Space', '', 'Wall Panel (m²)', 'Cabinet (m²)', 'RM49800', 'RM79800', 'Software Price', 'Before Price', 'After Price'], 'header');
 
-  let row = 7;
+  let row = layout.roomStartRow;
   rooms.forEach((room, index) => {
     const amounts = roomAmounts(room);
     // Never substitute a package price or a discount.  The source-derived
@@ -55,42 +59,50 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
     row++;
   });
   // These are services/add-ons, not rooms. They are always after the detected room rows.
-  ['Extra m²', 'Curve', 'Wall Panel', 'Aluminium Frame', 'Add-on finishing', 'Deduct Design Fee'].forEach((service, index) => {
-    putRow(row, [rooms.length + index + 1, service, '', '', '', 0, 0, 0, 0, 0], 'input');
-    row++;
+  const services = ['Extra m²', 'Curve', 'Wall Panel', 'Aluminium Frame', 'Add-on finishing', 'Deduct Design Fee'];
+  services.forEach((service, index) => {
+    const serviceRow = layout.extrasStartRow + index;
+    putRow(serviceRow, [layout.roomCount + index + 1, service, '', '', '', 0, 0, 0, 0, 0], 'input');
   });
-  const wholeTotalRow = row;
-  put(row, 2, 'Total Price:', 'total');
-  [6, 7, 8, 9, 10].forEach((column) => put(row, column, 0, 'formula', `SUM(${address(7, column)}:${address(row - 1, column)})`));
-  row += 2;
+  const wholeTotalRow = layout.wholeHouseTotalRow;
+  put(wholeTotalRow, 2, 'Total Price:', 'total');
+  [4, 5, 6, 7, 8, 9, 10].forEach((column) => put(wholeTotalRow, column, 0, 'formula', `SUM(${address(layout.roomStartRow, column)}:${address(wholeTotalRow - 1, column)})`));
 
-  put(row, 1, 'Supplementary', 'title');
-  row++;
-  putRow(row, ['No.', 'Item', '', 'sqft / per', 'Qty / per', 'RM49800', 'RM79800', 'Software Price', 'Before Price', 'After Price'], 'header');
-  row++;
-  const supplementaryStart = row;
-  quote.supplementaryItems.forEach((supp, index) => {
-    const per = supplementaryPerValue(supp);
-    const after = money(supp.totalAmountCents);
-    // `sqft / per` and the project sqft are inputs in the MOCOF document.
-    // Do not invent a hard-coded 600 sqft or reverse an assumed 80% discount.
-    // If the source has an explicit supplementary price it is preserved;
-    // otherwise the formula is left as an editable, auditable formula.
-    const before = after;
-    putRow(row, [index + 1, supp.description, '', per, supp.quantity, index < 5 ? 0 : after, index < 5 ? 0 : after, after, before, after], 'input');
-    put(row, 9, before, 'formula', `D${row}*$F$4*E${row}`);
-    put(row, 10, after, 'formula', index < 5 ? '0' : `I${row}*$I$3`);
-    put(row, 6, index < 5 ? 0 : after, 'formula', `J${row}`);
-    put(row, 7, index < 5 ? 0 : after, 'formula', `J${row}`);
-    row++;
+  put(layout.supplementaryTitleRow, 1, 'Supplementary', 'title');
+  putRow(layout.supplementaryHeaderRow, ['No.', 'Item', '', 'sqft / per', 'Qty / per', 'RM49800', 'RM79800', 'Software Price', 'Before Price', 'After Price'], 'header');
+  const sourceSupplementary = new Map(quote.supplementaryItems.map((item) => [item.description.trim().toLowerCase(), item]));
+  const knownSupplementary = new Set(DOCUMENTED_SUPPLEMENTARY_ROWS.map(([description]) => description.toLowerCase()));
+  // Documented rows define the standard template. Preserve any additional
+  // source service (for example Bathroom Shower Screen) as an editable row;
+  // never drop it and never assign it a sample price.
+  const supplementaryRows: Array<readonly [string, number]> = [
+    ...DOCUMENTED_SUPPLEMENTARY_ROWS,
+    ...quote.supplementaryItems
+      .filter((item) => !knownSupplementary.has(item.description.trim().toLowerCase()))
+      .map((item) => [item.description, supplementaryPerValue(item)] as const),
+  ];
+  supplementaryRows.forEach(([description, documentedPer], index) => {
+    const sheetRow = layout.supplementaryStartRow + index;
+    const source = sourceSupplementary.get(description.toLowerCase());
+    const per = source ? supplementaryPerValue(source) : documentedPer;
+    const sourceAfter = source ? money(source.totalAmountCents) : 0;
+    // The document requires the formula cells even when the input (sqft or
+    // price) is not yet present. Never fill a missing input using an old
+    // quotation's price; a boss can edit the input cell before export.
+    putRow(sheetRow, [index + 1, description, '', per, source?.quantity ?? 0, index < 5 ? 0 : sourceAfter, index < 5 ? 0 : sourceAfter, sourceAfter, sourceAfter, index < 5 ? 0 : sourceAfter], 'input');
+    put(sheetRow, 9, sourceAfter, 'formula', `D${sheetRow}*$F$4*E${sheetRow}`);
+    put(sheetRow, 10, index < 5 ? 0 : sourceAfter, 'formula', index < 5 ? '0' : `I${sheetRow}*$I$3`);
+    put(sheetRow, 6, index < 5 ? 0 : sourceAfter, 'formula', `J${sheetRow}`);
+    put(sheetRow, 7, index < 5 ? 0 : sourceAfter, 'formula', `J${sheetRow}`);
   });
-  const supplementaryTotalRow = row;
-  put(row, 2, 'Total Supplementary:', 'total');
-  [6, 7, 8, 9, 10].forEach((column) => put(row, column, 0, 'formula', `SUM(${address(supplementaryStart, column)}:${address(row - 1, column)})`));
-  row++;
-  put(row, 2, 'Total Whole House Price with Supplementary Items:', 'total');
-  [6, 7, 8, 9, 10].forEach((column) => put(row, column, 0, 'formula', `${address(wholeTotalRow, column)}+${address(supplementaryTotalRow, column)}`));
-  row += 2;
+  const supplementaryEndRow = layout.supplementaryStartRow + supplementaryRows.length - 1;
+  const supplementaryTotalRow = Math.max(layout.supplementaryTotalRow, supplementaryEndRow + 1);
+  put(supplementaryTotalRow, 2, 'Total Supplementary:', 'total');
+  [6, 7, 8, 9, 10].forEach((column) => put(supplementaryTotalRow, column, 0, 'formula', `SUM(${address(layout.supplementaryStartRow, column)}:${address(supplementaryEndRow, column)})`));
+  const grandTotalRow = layout.supplementaryGrandTotalRow;
+  put(grandTotalRow, 2, 'Total Whole House Price with Supplementary Items:', 'total');
+  [6, 7, 8, 9, 10].forEach((column) => put(grandTotalRow, column, 0, 'formula', `${address(wholeTotalRow, column)}+${address(supplementaryTotalRow, column)}`));
+  row = grandTotalRow + 2;
 
   rooms.forEach((room) => {
     put(row, 1, `${room.roomNameEnglish}${room.roomNameChinese && room.roomNameChinese !== room.roomNameEnglish ? ` // ${room.roomNameChinese}` : ''}`, 'title');

@@ -113,7 +113,7 @@ async function convertSupplierWorkbook(quote: Quote, originalFileName: string, b
   const exactDocumentedPrompts = getDocumentedAreaPrompts(parsedXlsx.detectedArea);
   quote.promptTrace = [
     `Detected Area ${parsedXlsx.detectedArea || 'not determined'} from ${parsedXlsx.sheetNames[0] || 'source workbook'}: only real room rows were counted; services/add-ons were excluded.`,
-    `Quotation document applied: ${exactDocumentedPrompts?.label || selectedAreaRule?.label || 'Shared MOCOF rules only'}. Every original prompt entry below was sent to the conversion agent in document order.`,
+    `Workbook workflow selected: ${exactDocumentedPrompts?.label || selectedAreaRule?.label || 'Shared MOCOF rules only'}. The generated grid uses the document's spreadsheet coordinates and formulas where they are unambiguous; every original prompt entry is displayed below for audit. Any source value that cannot be safely derived is preserved or flagged for review rather than replaced with a sample price.`,
     ...(exactDocumentedPrompts
       ? exactDocumentedPrompts.prompts.map((prompt, index) =>
           `DOCUMENTED PROMPT ${index + 1}${prompt.category ? ` — ${prompt.category}` : ''}\n${prompt.text}`)
