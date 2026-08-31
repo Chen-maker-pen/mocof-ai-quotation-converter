@@ -244,6 +244,13 @@ function roomNameFromSummaryRow(row: any[], roomColumnIndex: number) {
   return cells[roomColumnIndex] || cells[roomColumnIndex + 1] || cells[1] || cells[2] || '';
 }
 
+/** Supplier summary sheets often include non-room placeholders such as 其他
+ * (Other) followed by 无数据 (No data).  These must never affect the selected
+ * Area or produce an empty customer room table. */
+function isPlaceholderSummaryRoom(value: string) {
+  return /^(?:其他|其它|other|others|misc(?:ellaneous)?|无数据|no\s*data|n\/?a|-)$/i.test(value.trim());
+}
+
 function sectionCategory(sheetName: string, sectionName: string): QuoteItem['category'] {
   const text = `${sheetName} ${sectionName}`.toLowerCase();
   if (/wall|quick installation|背景墙|墙板/.test(text)) return 'wall_panel';
@@ -273,6 +280,7 @@ function buildCustomerWorkbookFromSource(
       if (!cells.join(' ')) continue;
       if (totalPattern.test(cells.join(' ')) || /^supplementary|补充/i.test(cells.join(' '))) break;
       if (servicePattern.test(name)) break;
+      if (isPlaceholderSummaryRoom(name)) continue;
       if (/^\d+$/.test(cells[0]) && name) {
         // The right-most numeric value in a supplier summary is its
         // authoritative room total. It is safer than summing detail rows
@@ -524,6 +532,7 @@ export function detectQuotationArea(rawRowsBySheet: Record<string, any[][]>): nu
     if (/^total|^合计|supplementary|补充/i.test(combined)) break;
     const name = roomNameFromSummaryRow(row, roomColumnIndex >= 0 ? roomColumnIndex : 1);
     if (servicePattern.test(name)) break;
+    if (isPlaceholderSummaryRoom(name)) continue;
     if (/^\d+$/.test(cells[0]) && name) count++;
   }
   return Math.min(10, count);
