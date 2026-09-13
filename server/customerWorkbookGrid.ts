@@ -36,14 +36,15 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   // is intentionally an A:J grid, not a separate dashboard table: every
   // prompt in the source document refers to these coordinates.
   put(1, 5, 'MOCOF Whole House Quotation', 'title');
-  // H2 and I2 are deliberately separate. H2 is the source-to-customer
-  // currency rate for detail rows; I2 is the documented whole-house
-  // discount multiplier. Keeping the values in their documented cells makes
-  // every formula traceable and editable in the grid.
-  putRow(2, ['', '', '', '', 'Customer Name', project.customerName, 'Currency', quote.exchangeRate.rate, 'Discount', 0.9]);
-  // I3 is the separately documented supplementary discount cell. It must not
-  // be mistaken for the whole-house discount in I2.
-  putRow(3, ['', '', '', '', 'Address', project.projectAddress, 'Budget', '', 'Supplementary discount', 0.8]);
+  // Keep the inputs at the exact addresses used by the Area documents:
+  // H2 = currency/conversion, I2 = whole-house discount and I3 =
+  // supplementary discount. Labels must never occupy I2/I3, otherwise the
+  // documented I/J price formulas multiply by text instead of a number.
+  // Area 3 document default: I2 is 90%. It is deliberately a visible,
+  // editable input because the boss may confirm a different discount later.
+  // Every After Price (J) formula reads this one cell.
+  putRow(2, ['', '', '', '', 'Customer Name', project.customerName, 'Currency', quote.exchangeRate.rate, 0.9, '']);
+  putRow(3, ['', '', '', '', 'Address', project.projectAddress, 'Budget', '', 0.8, '']);
   putRow(4, ['', '', '', '', 'Sqft', quote.sourceCustomerSqft || '', 'RM/sqft', '', '', '']);
   put(5, 1, 'Whole House Total', 'title');
   putRow(6, ['No.', 'Space', '', 'Wall Panel (m²)', 'Cabinet (m²)', 'RM49800', 'RM79800', 'Software Price', 'Before Price', 'After Price'], 'header');
@@ -69,6 +70,19 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
     const serviceRow = layout.extrasStartRow + index;
     putRow(serviceRow, [layout.roomCount + index + 1, service, '', '', '', 0, 0, 0, 0, 0], 'input');
   });
+  // Area 3 prompts: package amounts calculate only from actual m² totals.
+  // With no m² in the uploaded source these correctly stay zero rather than
+  // borrowing a number from a sample quotation.
+  if (layout.area === 3) {
+    put(10, 6, 0, 'formula', `IF(E${layout.wholeHouseTotalRow}>20,(E${layout.wholeHouseTotalRow}-20)*1999,0)`);
+    put(10, 7, 0, 'formula', `IF(E${layout.wholeHouseTotalRow}>24,(E${layout.wholeHouseTotalRow}-24)*1999,0)`);
+    put(12, 7, 0, 'formula', `IF(D${layout.wholeHouseTotalRow}>6,(D${layout.wholeHouseTotalRow}-6)*650,0)`);
+    // The document says Project quotations do not receive this deduction.
+    // When sqft exists, retain the documented threshold formula so the boss
+    // can visibly verify or override it in the sheet.
+    const deduction = `IF(F4=0,0,IF(F4<=1500,-1500,IF(F4<=2000,-2000,IF(F4<=2500,-3500,IF(F4<=3000,-6000,0)))))`;
+    [6, 7, 10].forEach((column) => put(15, column, 0, 'formula', deduction));
+  }
   const wholeTotalRow = layout.wholeHouseTotalRow;
   put(wholeTotalRow, 2, 'Total Price:', 'total');
   [4, 5, 6, 7, 8, 9, 10].forEach((column) => put(wholeTotalRow, column, 0, 'formula', `SUM(${address(layout.roomStartRow, column)}:${address(wholeTotalRow - 1, column)})`));
@@ -76,16 +90,10 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   put(layout.supplementaryTitleRow, 1, 'Supplementary', 'title');
   putRow(layout.supplementaryHeaderRow, ['No.', 'Item', '', 'sqft / per', 'Qty / per', 'RM49800', 'RM79800', 'Software Price', 'Before Price', 'After Price'], 'header');
   const sourceSupplementary = new Map(quote.supplementaryItems.map((item) => [item.description.trim().toLowerCase(), item]));
-  const knownSupplementary = new Set(DOCUMENTED_SUPPLEMENTARY_ROWS.map(([description]) => description.toLowerCase()));
-  // Documented rows define the standard template. Preserve any additional
-  // source service (for example Bathroom Shower Screen) as an editable row;
-  // never drop it and never assign it a sample price.
-  const supplementaryRows: Array<readonly [string, number]> = [
-    ...DOCUMENTED_SUPPLEMENTARY_ROWS,
-    ...quote.supplementaryItems
-      .filter((item) => !knownSupplementary.has(item.description.trim().toLowerCase()))
-      .map((item) => [item.description, supplementaryPerValue(item)] as const),
-  ];
+  // The selected Area document owns this fixed range (Area 3: A20:J33).
+  // Never append unmatched source services inside it: that moved the
+  // documented total rows and made subsequent prompt addresses incorrect.
+  const supplementaryRows: Array<readonly [string, number]> = DOCUMENTED_SUPPLEMENTARY_ROWS;
   supplementaryRows.forEach(([description, documentedPer], index) => {
     const sheetRow = layout.supplementaryStartRow + index;
     const source = sourceSupplementary.get(description.toLowerCase());
@@ -94,11 +102,11 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
     // The document requires the formula cells even when the input (sqft or
     // price) is not yet present. Never fill a missing input using an old
     // quotation's price; a boss can edit the input cell before export.
-    // Area 1 explicitly starts Qty / per at zero.  A quantity supplied in the
-    // uploaded quotation is retained, because it is a project value rather
-    // than an old sample price.  Missing values stay zero for boss review.
-    putRow(sheetRow, [index + 1, description, '', per, source?.quantity ?? 0, 0, 0, sourceSoftware, 0, 0], 'input');
-    put(sheetRow, 9, 0, 'formula', `D${sheetRow}*$F$4*E${sheetRow}`);
+    // Area 3 prompt: Qty / per starts at 0; its price formula uses the
+    // documented sqft/per × customer sqft calculation. It does not multiply
+    // by Qty/per until a later approved area rule says it should.
+    putRow(sheetRow, [index + 1, description, '', per, layout.area === 3 ? 0 : (source?.quantity ?? 0), 0, 0, sourceSoftware, 0, 0], 'input');
+    put(sheetRow, 9, 0, 'formula', layout.area === 3 ? `D${sheetRow}*$F$4` : `D${sheetRow}*$F$4*E${sheetRow}`);
     // Prompt 17 for Area 1 specifically fixes the first five standard
     // services to 0 After Price. This must occur before F/G mirror J.
     put(sheetRow, 10, 0, 'formula', usesFirstFiveSupplementaryZeroRule && index < 5 ? '0' : `I${sheetRow}*$I$3`);
@@ -112,11 +120,15 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   const grandTotalRow = layout.supplementaryGrandTotalRow;
   put(grandTotalRow, 2, 'Total Whole House Price with Supplementary Items:', 'total');
   [6, 7, 8, 9, 10].forEach((column) => put(grandTotalRow, column, 0, 'formula', `${address(wholeTotalRow, column)}+${address(supplementaryTotalRow, column)}`));
+  // Prompt 19: final customer unit price = final quotation total / sqft.
+  // Keep it blank when source sqft is unavailable, rather than divide by 0.
+  if (Number(quote.sourceCustomerSqft) > 0) put(4, 8, 0, 'formula', `J${grandTotalRow}/F4`);
   row = grandTotalRow + 2;
 
   rooms.forEach((room) => {
     put(row, 1, `${room.roomNameEnglish}${room.roomNameChinese && room.roomNameChinese !== room.roomNameEnglish ? ` // ${room.roomNameChinese}` : ''}`, 'title');
     row++;
+    const sectionTotalRows: number[] = [];
     room.sections.forEach((section) => {
       put(row, 1, section.sectionName || 'Cabinet Table', 'header');
       row++;
@@ -134,10 +146,16 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
       });
       put(row, 2, `${section.sectionName || 'Cabinet'} Total Price:`, 'total');
       [8, 9, 10].forEach((column) => put(row, column, 0, 'formula', `SUM(${address(sectionStart, column)}:${address(row - 1, column)})`));
+      sectionTotalRows.push(row);
       row++;
     });
     put(row, 2, 'Total Price:', 'total');
-    put(row, 10, money(room.subtotals.subtotalCents), 'formula', `SUM(J${Math.max(1, row - 1)}:J${Math.max(1, row - 1)})`);
+    // Sum only the section-total cells. Summing the complete detail range
+    // would double count every item and its section total.
+    [8, 9, 10].forEach((column) => {
+      const references = sectionTotalRows.map((totalRow) => `${address(totalRow, column)}`).join('+') || '0';
+      put(row, column, 0, 'formula', references);
+    });
     row += 2;
   });
 

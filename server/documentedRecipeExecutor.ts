@@ -142,7 +142,7 @@ function getAreaTwoOperationOrder(): AreaRecipeStep[] {
 // Prompt Trace remains an auditable ordered recipe when Area 3 is selected.
 const AREA_THREE_TARGETS: Record<string, Omit<AreaRecipeStep, 'promptNumber'>> = {
   '1': { operation: 'Copy source price content to Before/After columns and create the MOCOF heading.', target: 'E1, A5, H:J', mode: 'deterministic' },
-  '2': { operation: 'Create Area 3 headings, customer inputs, currency, budget and 90% whole-house discount.', target: 'A6:J6, E2:J4, I2', mode: 'deterministic' },
+  '2': { operation: 'Create Area 3 headings, customer inputs, currency, budget and the documented 90% whole-house multiplier. I2 remains editable for a later boss-confirmed discount.', target: 'A6:J6, E2:J4, I2', mode: 'deterministic' },
   '3': { operation: 'Clear documented Area 3 package input cells.', target: 'D7:G10', mode: 'deterministic' },
   '4': { operation: 'Create six service/add-on rows after the three real rooms.', target: 'A10:B15', mode: 'deterministic' },
   '5': { operation: 'Number the Whole House Total rows.', target: 'A7:A15', mode: 'deterministic' },
@@ -291,6 +291,10 @@ export function buildDocumentedPromptExecution(areaNumber?: number): DocumentedP
     let result = 'Requires the original workbook layout or a boss-approved source value.';
 
     const mappedStep = areaOneSteps.get(prompt.number);
+    // Preserve every Area-document line verbatim in the audit trace. I2 is
+    // deliberately editable in the workbook, so a later confirmed discount
+    // changes all linked J cells without altering the source prompt record.
+    const instruction = prompt.text;
     if (mappedStep) {
       status = mappedStep.mode === 'deterministic'
         ? 'applied'
@@ -302,7 +306,7 @@ export function buildDocumentedPromptExecution(areaNumber?: number): DocumentedP
         : mappedStep.mode === 'source-derived'
           ? 'Runs only when its required source value/row is present; otherwise it remains visible for review.'
           : 'Requires a logo, merge decision, project classification or other manager action.'}`;
-      return { promptNumber: prompt.number || index + 1, category: prompt.category || `Documented prompt ${index + 1}`, instruction: prompt.text, status, result };
+      return { promptNumber: prompt.number || index + 1, category: prompt.category || `Documented prompt ${index + 1}`, instruction, status, result };
     }
 
     // Only label a prompt "applied" when the generator performs its matching
@@ -324,7 +328,7 @@ export function buildDocumentedPromptExecution(areaNumber?: number): DocumentedP
     return {
       promptNumber: prompt.number || index + 1,
       category: prompt.category || `Documented prompt ${index + 1}`,
-      instruction: prompt.text,
+      instruction,
       status,
       result,
     };

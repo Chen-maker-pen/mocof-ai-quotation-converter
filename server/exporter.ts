@@ -7,6 +7,7 @@ import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Quote, ConversionProfile, Project } from '../src/types.js';
+import { evaluateWorkbookCell } from '../src/lib/formulaEvaluator.js';
 
 /**
  * Generate the customer workbook in the same single-sheet sequence as the
@@ -38,7 +39,13 @@ export async function generateCustomerXlsx(
       (sheet.mergedRanges || []).forEach((range) => { try { ws.mergeCells(range); } catch { /* keep export resilient to legacy ranges */ } });
       Object.values(sheet.cells).forEach((cell) => {
         const target = ws.getCell(cell.address);
-        target.value = cell.formula ? { formula: cell.formula } : cell.value;
+        // Excel/Numbers do not always recalculate a newly downloaded file.
+        // Store the original formula *and* its evaluated cached result so the
+        // exported sheet immediately shows calculated prices and totals.
+        const calculated = cell.formula ? evaluateWorkbookCell(sheet, cell.address) : undefined;
+        target.value = cell.formula
+          ? { formula: cell.formula, result: calculated ?? (typeof cell.value === 'number' ? cell.value : 0) }
+          : cell.value;
         target.alignment = { vertical: 'middle', wrapText: true, horizontal: cell.column >= 6 ? 'right' : 'left' };
         target.border = border;
         if (cell.kind === 'title') {

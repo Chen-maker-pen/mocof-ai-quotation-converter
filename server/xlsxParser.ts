@@ -441,8 +441,15 @@ function buildCustomerWorkbookFromSource(
       section.items.forEach((item) => {
         const combi = String(item.combi || '').trim();
         if (combi && (comboCount.get(combi) || 0) > 1) {
-          if (emittedGroupPrice.has(combi)) item.supplierPriceCents = 0;
-          else emittedGroupPrice.add(combi);
+          if (emittedGroupPrice.has(combi)) {
+            // A merged source group price belongs to the first visible line
+            // only. Changing only supplierPrice left the old final total in
+            // place and overcharged every following customer calculation.
+            item.supplierPriceCents = 0;
+            item.unitPriceCents = 0;
+            item.totalAmountCents = 0;
+            item.finalAmountCents = 0;
+          } else emittedGroupPrice.add(combi);
         }
       });
     });
