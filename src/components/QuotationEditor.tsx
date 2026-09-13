@@ -372,6 +372,36 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
   const gridSheet = editedQuote.workbookSheets?.[0];
   const gridLastRow = gridSheet ? Math.min(Math.max(...Object.values(gridSheet.cells).map((cell) => cell.row), 40), 260) : 0;
   const gridColumns = gridSheet ? Array.from({ length: gridSheet.columnCount }, (_, index) => String.fromCharCode(65 + index)) : [];
+  const gridNumber = (cellAddress: string, fallback = 0) => {
+    if (!gridSheet?.cells[cellAddress]) return fallback;
+    const value = evaluateWorkbookCell(gridSheet, cellAddress);
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+  };
+  const gridCents = (cellAddress: string, fallback = 0) => Math.round(gridNumber(cellAddress, fallback / 100) * 100);
+  const supplementaryTitleRow = gridSheet
+    ? Object.values(gridSheet.cells).find((cell) => cell.column === 1 && String(cell.value).trim().toLowerCase() === 'supplementary')?.row
+    : undefined;
+  const supplementaryTotalRow = supplementaryTitleRow && gridSheet
+    ? Object.values(gridSheet.cells)
+      .filter((cell) => cell.row > supplementaryTitleRow && cell.column === 2 && /^total supplementary\s*:?$/i.test(String(cell.value).trim()))
+      .sort((a, b) => a.row - b.row)[0]?.row
+    : undefined;
+  const gridSupplementaryRows = supplementaryTitleRow && gridSheet
+    ? Array.from({ length: Math.max(0, (supplementaryTotalRow ?? gridLastRow + 1) - (supplementaryTitleRow + 2)) }, (_, offset) => supplementaryTitleRow + 2 + offset)
+      .map((row) => ({
+        row,
+        description: String(gridSheet.cells[`B${row}`]?.value || '').trim(),
+        per: gridNumber(`D${row}`),
+        quantity: gridNumber(`E${row}`),
+        package49800: gridCents(`F${row}`),
+        package79800: gridCents(`G${row}`),
+        software: gridCents(`H${row}`),
+        before: gridCents(`I${row}`),
+        after: gridCents(`J${row}`),
+      }))
+      .filter((item) => item.description && !/^total\s+(supplementary|whole house|price)/i.test(item.description))
+    : [];
 
   const activeWorksheet = editedQuote.worksheets.find(
     (w) => w.worksheetIndex === activeSheetIndex
@@ -384,6 +414,24 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
       before: items.reduce((sum: number, item: QuoteItem) => sum + item.totalAmountCents, 0),
       after: items.reduce((sum: number, item: QuoteItem) => sum + item.finalAmountCents, 0),
     };
+  };
+
+  // The Detail Form and Sheet Grid must never have competing pricing logic.
+  // When a documented workbook grid exists, its H/I/J formula cells are the
+  // single source of truth for software, before and after prices.
+  const detailRoomAmounts = (room: any, roomIndex: number) => {
+    const row = 7 + roomIndex;
+    if (gridSheet?.cells[`H${row}`]) {
+      return {
+        software: gridCents(`H${row}`),
+        before: gridCents(`I${row}`),
+        after: gridCents(`J${row}`),
+        package49800: gridCents(`F${row}`),
+        package79800: gridCents(`G${row}`),
+      };
+    }
+    const fallback = roomAmounts(room);
+    return { ...fallback, package49800: fallback.after, package79800: fallback.after };
   };
 
   const supplementaryPerValue = (supp: SupplementaryItem) =>
@@ -585,17 +633,17 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {(activeWorksheet?.rooms || []).map((room, idx) => {
-                    const amounts = roomAmounts(room);
+                    const amounts = detailRoomAmounts(room, idx);
                     return <tr key={room.id}>
                       <td className="p-2 text-center font-mono">{idx + 1}</td>
                       <td className="p-2 font-semibold">{room.roomNameEnglish}{room.roomNameChinese && room.roomNameChinese !== room.roomNameEnglish ? ` // ${room.roomNameChinese}` : ''}</td>
                       <td className="p-2 text-center text-slate-400">—</td><td className="p-2 text-center text-slate-400">—</td>
-                      <td className="p-2 text-right font-mono">RM {(amounts.after / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(amounts.after / 100).toFixed(2)}</td>
+                      <td className="p-2 text-right font-mono">RM {(amounts.package49800 / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(amounts.package79800 / 100).toFixed(2)}</td>
                       <td className="p-2 text-right font-mono">RM {(amounts.software / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(amounts.before / 100).toFixed(2)}</td><td className="p-2 text-right font-mono font-bold">RM {(amounts.after / 100).toFixed(2)}</td>
                     </tr>;
                   })}
                   {['Extra m²', 'Curve', 'Wall Panel', 'Aluminium Frame', 'Add-on finishing', 'Deduct Design Fee'].map((name, idx) => <tr key={name} className="bg-slate-50"><td className="p-2 text-center font-mono">{(activeWorksheet?.rooms.length || 0) + idx + 1}</td><td className="p-2">{name}</td><td colSpan={4} className="p-2"></td><td className="p-2 text-right font-mono">RM 0.00</td><td className="p-2 text-right font-mono">RM 0.00</td><td className="p-2 text-right font-mono">RM 0.00</td></tr>)}
-                  <tr className="bg-slate-200 font-extrabold"><td colSpan={4} className="p-2 text-right">Total Price:</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room) => sum + roomAmounts(room).after, 0) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room) => sum + roomAmounts(room).after, 0) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room) => sum + roomAmounts(room).software, 0) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room) => sum + roomAmounts(room).before, 0) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room) => sum + roomAmounts(room).after, 0) / 100).toFixed(2)}</td></tr>
+                  <tr className="bg-slate-200 font-extrabold"><td colSpan={4} className="p-2 text-right">Total Price:</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).package49800, 0) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).package79800, 0) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).software, 0) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).before, 0) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).after, 0) / 100).toFixed(2)}</td></tr>
                 </tbody>
               </table>
             </div>
@@ -616,30 +664,39 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
                   <tr><th className="p-2 text-left w-12">No.</th><th className="p-2 text-left">Item</th><th className="p-2 w-28">sqft / per</th><th className="p-2 w-24">Qty / per</th><th className="p-2 w-28">RM 49,800</th><th className="p-2 w-28">RM 79,800</th><th className="p-2 w-32">Before Price</th><th className="p-2 w-32">After Price</th><th className="p-2 w-12"></th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {editedQuote.supplementaryItems.map((supp, idx) => {
+                  {(gridSupplementaryRows.length ? gridSupplementaryRows : editedQuote.supplementaryItems.map((supp, idx) => {
                     const amounts = supplementaryAmounts(supp, idx);
-                    return <tr key={supp.id}>
+                    return { row: 0, description: supp.description, per: supplementaryPerValue(supp), quantity: supp.quantity, package49800: amounts.packagePrice, package79800: amounts.packagePrice, software: 0, before: amounts.before, after: amounts.after, source: supp, index: idx };
+                  })).map((supp: any, idx) => {
+                    const source = supp.source || editedQuote.supplementaryItems[idx];
+                    return <tr key={supp.row || source?.id || idx}>
                       <td className="p-2 text-center font-mono">{idx + 1}</td>
-                      <td className="p-2"><input value={supp.description} onChange={(e) => { const updated = JSON.parse(JSON.stringify(editedQuote)) as Quote; updated.supplementaryItems[idx].description = e.target.value; setEditedQuote(updated); }} className="w-full border border-slate-200 rounded px-2 py-1" /></td>
-                      <td className="p-2"><input type="number" min="0" value={supplementaryPerValue(supp)} onChange={(e) => { const updated = JSON.parse(JSON.stringify(editedQuote)) as Quote; updated.supplementaryItems[idx].perValue = Number(e.target.value); setEditedQuote(updated); }} className="w-full border border-slate-200 rounded px-2 py-1 text-center" /></td>
-                      <td className="p-2"><input type="number" min="0" value={supp.quantity} onChange={(e) => { const updated = JSON.parse(JSON.stringify(editedQuote)) as Quote; updated.supplementaryItems[idx].quantity = Number(e.target.value); updated.supplementaryItems[idx].totalAmountCents = updated.supplementaryItems[idx].quantity * updated.supplementaryItems[idx].unitPriceCents; setEditedQuote(updated); }} className="w-full border border-slate-200 rounded px-2 py-1 text-center" /></td>
-                      <td className="p-2"><input type="number" value={supp.unitPriceCents / 100} onChange={(e) => { const updated = JSON.parse(JSON.stringify(editedQuote)) as Quote; updated.supplementaryItems[idx].unitPriceCents = Math.round(Number(e.target.value) * 100); updated.supplementaryItems[idx].totalAmountCents = updated.supplementaryItems[idx].quantity * updated.supplementaryItems[idx].unitPriceCents; setEditedQuote(updated); }} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" /></td>
-                      <td className="p-2 text-right font-mono">RM {(amounts.packagePrice / 100).toFixed(2)}</td>
-                      <td className="p-2 text-right font-mono">RM {(amounts.before / 100).toFixed(2)}</td>
-                      <td className="p-2 text-right font-mono font-bold">RM {(amounts.after / 100).toFixed(2)}</td>
-                      <td className="p-2 text-center"><button onClick={() => handleDeleteSupplementary(supp.id)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button></td>
+                      <td className="p-2"><input value={supp.description} onChange={(e) => supp.row ? updateGridCell(`B${supp.row}`, e.target.value) : (() => { const updated = JSON.parse(JSON.stringify(editedQuote)) as Quote; updated.supplementaryItems[idx].description = e.target.value; setEditedQuote(updated); })()} className="w-full border border-slate-200 rounded px-2 py-1" /></td>
+                      <td className="p-2"><input type="number" min="0" value={supp.per} onChange={(e) => supp.row ? updateGridCell(`D${supp.row}`, e.target.value) : (() => { const updated = JSON.parse(JSON.stringify(editedQuote)) as Quote; updated.supplementaryItems[idx].perValue = Number(e.target.value); setEditedQuote(updated); })()} className="w-full border border-slate-200 rounded px-2 py-1 text-center" /></td>
+                      <td className="p-2"><input type="number" min="0" value={supp.quantity} onChange={(e) => supp.row ? updateGridCell(`E${supp.row}`, e.target.value) : (() => { const updated = JSON.parse(JSON.stringify(editedQuote)) as Quote; updated.supplementaryItems[idx].quantity = Number(e.target.value); setEditedQuote(updated); })()} className="w-full border border-slate-200 rounded px-2 py-1 text-center" /></td>
+                      <td className="p-2"><input type="number" value={supp.package49800 / 100} onChange={(e) => supp.row ? updateGridCell(`F${supp.row}`, e.target.value) : undefined} className="w-full border border-slate-200 rounded px-2 py-1 font-mono" /></td>
+                      <td className="p-2 text-right font-mono">RM {(supp.package79800 / 100).toFixed(2)}</td>
+                      <td className="p-2 text-right font-mono">RM {(supp.before / 100).toFixed(2)}</td>
+                      <td className="p-2 text-right font-mono font-bold">RM {(supp.after / 100).toFixed(2)}</td>
+                      <td className="p-2 text-center"><button onClick={() => source && handleDeleteSupplementary(source.id)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button></td>
                     </tr>;
                   })}
-                  {editedQuote.supplementaryItems.length > 0 && (() => {
-                    const totals = editedQuote.supplementaryItems.reduce((sum, supp, index) => {
+                  {(gridSupplementaryRows.length || editedQuote.supplementaryItems.length > 0) && (() => {
+                    const displaySupplementary = gridSupplementaryRows.length ? gridSupplementaryRows : editedQuote.supplementaryItems.map((supp, index) => {
                       const amounts = supplementaryAmounts(supp, index);
-                      sum.package += amounts.packagePrice; sum.before += amounts.before; sum.after += amounts.after;
+                      return { package49800: amounts.packagePrice, package79800: amounts.packagePrice, before: amounts.before, after: amounts.after };
+                    });
+                    const totals = displaySupplementary.reduce((sum, supp: any) => {
+                      sum.package49800 += supp.package49800; sum.package79800 += supp.package79800; sum.before += supp.before; sum.after += supp.after;
                       return sum;
-                    }, { package: 0, before: 0, after: 0 });
-                    const wholeAfter = (activeWorksheet?.rooms || []).reduce((sum, room) => sum + roomAmounts(room).after, 0);
+                    }, { package49800: 0, package79800: 0, before: 0, after: 0 });
+                    const wholePackage49800 = (activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).package49800, 0);
+                    const wholePackage79800 = (activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).package79800, 0);
+                    const wholeBefore = (activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).before, 0);
+                    const wholeAfter = (activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).after, 0);
                     return <>
-                      <tr className="bg-slate-200 font-extrabold"><td colSpan={4} className="p-2 text-right">Total Supplementary:</td><td className="p-2 text-right font-mono">RM {(totals.package / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(totals.package / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(totals.before / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(totals.after / 100).toFixed(2)}</td><td></td></tr>
-                      <tr className="bg-[#0b1f3a] text-white font-extrabold text-sm"><td colSpan={4} className="p-2 text-right">Total Whole House Price with Supplementary Items:</td><td className="p-2 text-right font-mono">RM {((wholeAfter + totals.package) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((wholeAfter + totals.package) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((wholeAfter + totals.before) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((wholeAfter + totals.after) / 100).toFixed(2)}</td><td></td></tr>
+                      <tr className="bg-slate-200 font-extrabold"><td colSpan={4} className="p-2 text-right">Total Supplementary:</td><td className="p-2 text-right font-mono">RM {(totals.package49800 / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(totals.package79800 / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(totals.before / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(totals.after / 100).toFixed(2)}</td><td></td></tr>
+                      <tr className="bg-[#0b1f3a] text-white font-extrabold text-sm"><td colSpan={4} className="p-2 text-right">Total Whole House Price with Supplementary Items:</td><td className="p-2 text-right font-mono">RM {((wholePackage49800 + totals.package49800) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((wholePackage79800 + totals.package79800) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((wholeBefore + totals.before) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((wholeAfter + totals.after) / 100).toFixed(2)}</td><td></td></tr>
                     </>;
                   })()}
                   {editedQuote.supplementaryItems.length === 0 && <tr><td colSpan={9} className="p-3 text-slate-500 italic">No supplementary items found in the uploaded workbook.</td></tr>}
