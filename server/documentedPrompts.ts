@@ -9,13 +9,16 @@ export interface DocumentedPrompt {
 export interface DocumentedAreaPromptSet {
   areaNumber: number;
   label: string;
+  /** The boss-approved document which supplied this Area recipe. */
+  sourceDocument?: string;
   prompts: DocumentedPrompt[];
 }
 
 export const DOCUMENTED_AREA_PROMPTS: DocumentedAreaPromptSet[] = [
   {
     "areaNumber": 1,
-    "label": "Area 1 — 1 real room — 43 exact documented prompts",
+    "label": "Area 1 — 1 real room — 43 sequential prompts",
+    "sourceDocument": "Area_1.docx (boss-approved Area 1 workflow)",
     "prompts": [
       {
         "number": "1",
@@ -236,7 +239,8 @@ export const DOCUMENTED_AREA_PROMPTS: DocumentedAreaPromptSet[] = [
   },
   {
     "areaNumber": 2,
-    "label": "Area 2 — 2 real rooms — 42 exact documented prompts",
+    "label": "Area 2 — 2 real rooms — 42 sequential prompts",
+    "sourceDocument": "Area_2.docx (boss-approved Area 2 workflow)",
     "prompts": [
       {
         "number": "1",
@@ -452,7 +456,8 @@ export const DOCUMENTED_AREA_PROMPTS: DocumentedAreaPromptSet[] = [
   },
   {
     "areaNumber": 3,
-    "label": "Area 3 — 3 real rooms — 39 exact documented prompts",
+    "label": "Area 3 — 3 real rooms — 39 sequential prompts",
+    "sourceDocument": "Arae_3.docx (boss-approved Area 3 workflow)",
     "prompts": [
       {
         "number": "1",

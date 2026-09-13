@@ -18,29 +18,28 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   };
   const putRow = (row: number, values: Array<string | number>, kind: WorkbookCell['kind'] = 'text') => values.forEach((value, index) => put(row, index + 1, value, kind));
   const money = (cents: number) => Number((cents / 100).toFixed(2));
-  const roomAmounts = (room: QuoteRoom) => {
+  const roomSoftwarePrice = (room: QuoteRoom) => {
     const items = room.sections.flatMap((section) => section.items).filter((item) => item.isVisibleToCustomer);
-    const sourceSummary = room.sourceSummaryCents;
     const reconstructed = money(items.reduce((sum, item) => sum + item.totalAmountCents, 0));
-    const authoritative = sourceSummary === undefined ? reconstructed : money(sourceSummary);
-    return {
-      // The recipe starts by copying the supplier's summary price from H to I
-      // and J.  Therefore H must use the same authoritative supplier value,
-      // not a separate reconstruction of detail rows (which may repeat merged
-      // Combi prices and caused the previous incorrect totals).
-      software: authoritative,
-      before: authoritative,
-      after: authoritative,
-    };
+    // Supplier summary H is the authoritative source price. Detail prices can
+    // be repeated over merged product groups, so summing them can overstate a
+    // room. This value belongs in Software Price (H) only.
+    return room.sourceSummaryCents === undefined ? reconstructed : money(room.sourceSummaryCents);
   };
   const worksheet = quote.worksheets.find((sheet) => sheet.code === 'whole_house') || quote.worksheets[0];
   const rooms = worksheet?.rooms || [];
   const layout = getDocumentedRecipeLayout(quote.detectedArea || rooms.length);
+  const isAreaOne = layout.area === 1;
+  const usesFirstFiveSupplementaryZeroRule = isAreaOne || layout.area === 2 || layout.area === 3;
 
   // Header cells are exactly where the documented recipe expects them.  This
   // is intentionally an A:J grid, not a separate dashboard table: every
   // prompt in the source document refers to these coordinates.
   put(1, 5, 'MOCOF Whole House Quotation', 'title');
+  // H2 and I2 are deliberately separate. H2 is the source-to-customer
+  // currency rate for detail rows; I2 is the documented whole-house
+  // discount multiplier. Keeping the values in their documented cells makes
+  // every formula traceable and editable in the grid.
   putRow(2, ['', '', '', '', 'Customer Name', project.customerName, 'Currency', quote.exchangeRate.rate, 'Discount', 0.9]);
   // I3 is the separately documented supplementary discount cell. It must not
   // be mistaken for the whole-house discount in I2.
@@ -51,12 +50,15 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
 
   let row = layout.roomStartRow;
   rooms.forEach((room, index) => {
-    const amounts = roomAmounts(room);
-    // Never substitute a package price or a discount.  The source-derived
-    // amounts remain visible and formula references document where the
-    // package columns came from.  The Area recipe / boss prompt can change a
-    // cell deliberately; it must not be guessed by the converter.
-    putRow(row, [index + 1, `${room.roomNameEnglish}${room.roomNameChinese && room.roomNameChinese !== room.roomNameEnglish ? ` // ${room.roomNameChinese}` : ''}`, '', '', '', 0, 0, amounts.software, amounts.before, amounts.after], 'input');
+    const software = roomSoftwarePrice(room);
+    // Whole-house rows use the supplier total as their Before Price. This is
+    // the value shown in the source summary and must never be converted a
+    // second time. The final customer amount is the live documented discount
+    // formula. Detail-table rows below use the H → I currency conversion
+    // recipe separately.
+    putRow(row, [index + 1, `${room.roomNameEnglish}${room.roomNameChinese && room.roomNameChinese !== room.roomNameEnglish ? ` // ${room.roomNameChinese}` : ''}`, '', '', '', 0, 0, software, 0, 0], 'input');
+    put(row, 9, 0, 'formula', `H${row}`);
+    put(row, 10, 0, 'formula', `I${row}*$I$2`);
     // F/G are package columns, not copies of the room total. The documented
     // Area recipes populate them only when their package formula applies.
     row++;
@@ -88,15 +90,20 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
     const sheetRow = layout.supplementaryStartRow + index;
     const source = sourceSupplementary.get(description.toLowerCase());
     const per = source ? supplementaryPerValue(source) : documentedPer;
-    const sourceAfter = source ? money(source.totalAmountCents) : 0;
+    const sourceSoftware = source ? money(source.totalAmountCents) : 0;
     // The document requires the formula cells even when the input (sqft or
     // price) is not yet present. Never fill a missing input using an old
     // quotation's price; a boss can edit the input cell before export.
-    putRow(sheetRow, [index + 1, description, '', per, source?.quantity ?? 0, index < 5 ? 0 : sourceAfter, index < 5 ? 0 : sourceAfter, sourceAfter, sourceAfter, index < 5 ? 0 : sourceAfter], 'input');
-    put(sheetRow, 9, sourceAfter, 'formula', `D${sheetRow}*$F$4*E${sheetRow}`);
-    put(sheetRow, 10, index < 5 ? 0 : sourceAfter, 'formula', index < 5 ? '0' : `I${sheetRow}*$I$3`);
-    put(sheetRow, 6, index < 5 ? 0 : sourceAfter, 'formula', `J${sheetRow}`);
-    put(sheetRow, 7, index < 5 ? 0 : sourceAfter, 'formula', `J${sheetRow}`);
+    // Area 1 explicitly starts Qty / per at zero.  A quantity supplied in the
+    // uploaded quotation is retained, because it is a project value rather
+    // than an old sample price.  Missing values stay zero for boss review.
+    putRow(sheetRow, [index + 1, description, '', per, source?.quantity ?? 0, 0, 0, sourceSoftware, 0, 0], 'input');
+    put(sheetRow, 9, 0, 'formula', `D${sheetRow}*$F$4*E${sheetRow}`);
+    // Prompt 17 for Area 1 specifically fixes the first five standard
+    // services to 0 After Price. This must occur before F/G mirror J.
+    put(sheetRow, 10, 0, 'formula', usesFirstFiveSupplementaryZeroRule && index < 5 ? '0' : `I${sheetRow}*$I$3`);
+    put(sheetRow, 6, 0, 'formula', `J${sheetRow}`);
+    put(sheetRow, 7, 0, 'formula', `J${sheetRow}`);
   });
   const supplementaryEndRow = layout.supplementaryStartRow + supplementaryRows.length - 1;
   const supplementaryTotalRow = Math.max(layout.supplementaryTotalRow, supplementaryEndRow + 1);
@@ -117,7 +124,12 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
       row++;
       const sectionStart = row;
       section.items.filter((item) => item.isVisibleToCustomer).forEach((item, index) => {
-        putRow(row, [index + 1, item.imageUrl ? 'Photo preserved' : '', item.combi || '', item.nameEnglish || item.nameChinese, item.itemCode, item.dimensionText, item.quantity, money(item.supplierPriceCents), money(item.totalAmountCents), money(item.finalAmountCents)], 'input');
+        // Match the documented H → I → J conversion sequence for every
+        // numeric product row. Source prices remain in H; I and J are always
+        // live formulas and can be overridden in the spreadsheet editor.
+        putRow(row, [index + 1, item.imageUrl ? 'Photo preserved' : '', item.combi || '', item.nameEnglish || item.nameChinese, item.itemCode, item.dimensionText, item.quantity, money(item.supplierPriceCents), 0, 0], 'input');
+        put(row, 9, 0, 'formula', `H${row}*$H$2`);
+        put(row, 10, 0, 'formula', `I${row}*$I$2`);
         row++;
       });
       put(row, 2, `${section.sectionName || 'Cabinet'} Total Price:`, 'total');

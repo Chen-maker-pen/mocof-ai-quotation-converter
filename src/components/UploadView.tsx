@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 interface UploadViewProps {
-  onProcessFile: (file?: File) => Promise<void>;
+  onProcessFile: (file?: File, selectedArea?: number) => Promise<void>;
   isProcessing: boolean;
   conversionError?: string | null;
   currentProjectName?: string;
@@ -35,6 +35,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
   quotationNumber,
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedArea, setSelectedArea] = useState<number | null>(null);
   const [dragActive, setDragActive] = useState<boolean>(false);
   const [activeStep, setActiveStep] = useState<number>(0);
 
@@ -88,7 +89,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
     }, 700);
 
     try {
-      await onProcessFile(fileToUse || selectedFile || undefined);
+      await onProcessFile(fileToUse || selectedFile || undefined, selectedArea || undefined);
     } finally {
       clearInterval(interval);
       setActiveStep(5);
@@ -110,6 +111,32 @@ export const UploadView: React.FC<UploadViewProps> = ({
           Upload a Chinese supplier workbook (.xlsx) or quotation PDF. The system converts it into MOCOF's editable English customer format.
         </p>
       </div>
+
+      {/* The boss chooses the Area before conversion.  Detection remains an
+          audit/safety check on the server; it does not silently choose a
+          different Area recipe. */}
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-extrabold uppercase tracking-wide text-[#183b6b]">Step 2 of 3: Choose quotation Area</p>
+            <p className="mt-1 text-xs text-slate-600">Select the Area recipe that must run. The chosen Area controls the exact prompt sequence, row locations, formulas and tables.</p>
+          </div>
+          <span className="mt-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 sm:mt-0">Required before conversion</span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {Array.from({ length: 10 }, (_, index) => index + 1).map((area) => (
+            <button
+              key={area}
+              type="button"
+              onClick={() => setSelectedArea(area)}
+              className={`rounded-lg border px-3 py-3 text-left text-xs font-bold transition-colors ${selectedArea === area ? 'border-[#183b6b] bg-[#183b6b] text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-[#183b6b] hover:bg-slate-50'}`}
+            >
+              <span className="block text-base leading-none">Area {area}</span>
+              <span className={`mt-1 block text-[10px] font-medium ${selectedArea === area ? 'text-slate-200' : 'text-slate-500'}`}>Use Area {area} prompt recipe</span>
+            </button>
+          ))}
+        </div>
+      </section>
 
       {/* Upload Dropzone */}
       <div
@@ -152,11 +179,11 @@ export const UploadView: React.FC<UploadViewProps> = ({
 
               <button
                 onClick={() => startConversion()}
-                disabled={!selectedFile}
+                disabled={!selectedFile || !selectedArea}
                 className="inline-flex items-center px-5 py-2.5 bg-[#0b1f3a] hover:bg-[#183b6b] text-white text-xs font-semibold rounded-lg shadow-sm shadow-black/20 transition-colors"
               >
                 <Sparkles className="w-4 h-4 mr-1.5 text-white" />
-                {selectedFile ? 'Convert to Customer Quotation' : 'Choose an XLSX or PDF file first'}
+                {!selectedFile ? 'Choose an XLSX or PDF file first' : !selectedArea ? 'Choose Area 1–10 first' : `Run Area ${selectedArea} Recipe`}
               </button>
             </div>
           )}
@@ -174,7 +201,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
         </div>
       )}
 
-      {!isProcessing && <p className="text-center text-xs text-slate-500">Step 2: AI converts the quotation. Step 3: review, edit if needed, and export PDF or Excel.</p>}
+      {!isProcessing && <p className="text-center text-xs text-slate-500">Step 3: the selected Area recipe converts the quotation. Then review, edit if needed, and export PDF or Excel.</p>}
 
       {/* Real-Time Processing Progress Panel */}
       {isProcessing && (

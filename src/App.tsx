@@ -88,11 +88,12 @@ export default function App() {
     }
   };
 
-  const handleProcessFile = async (file?: File) => {
+  const handleProcessFile = async (file?: File, selectedArea?: number) => {
     setIsProcessing(true);
     setConversionError(null);
     try {
       if (!file) throw new Error('Choose the original Chinese supplier .xlsx or .pdf file first.');
+      if (!selectedArea || selectedArea < 1 || selectedArea > 10) throw new Error('Choose the quotation Area (1–10) before conversion.');
 
       // Create and convert in one API request. This is required on Vercel,
       // where a temporary serverless instance cannot be relied on to retain a
@@ -105,6 +106,7 @@ export default function App() {
         customerEmail: '',
         projectAddress: 'Site address to be confirmed',
         currency: 'MYR',
+        selectedArea,
       });
       setCurrentProject(res.project);
       setCurrentQuote(res.quote);

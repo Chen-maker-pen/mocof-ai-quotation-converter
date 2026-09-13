@@ -24,13 +24,21 @@ import { buildDocumentedPromptExecution } from './server/documentedRecipeExecuto
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-async function convertSupplierWorkbook(quote: Quote, originalFileName: string, buffer: Buffer) {
+async function convertSupplierWorkbook(quote: Quote, originalFileName: string, buffer: Buffer, selectedArea?: number) {
   const project = db.getProjectById(quote.projectId);
   const profile = db.getConversionProfile();
   const isPdf = /\.pdf$/i.test(originalFileName) || buffer.subarray(0, 4).toString() === '%PDF';
   const parsedXlsx = isPdf
     ? await parseSupplierPdfBuffer(buffer, originalFileName)
     : await parseSupplierXlsxBuffer(buffer, originalFileName);
+  const detectedArea = parsedXlsx.detectedArea || undefined;
+  const requestedArea = Number(selectedArea);
+  if (!Number.isInteger(requestedArea) || requestedArea < 1 || requestedArea > 10) {
+    throw new Error('Choose a quotation Area from 1 to 10 before conversion.');
+  }
+  // The selected Area is the business decision. Detection is retained only
+  // for an auditable warning; it must never silently run a different recipe.
+  const areaToRun = requestedArea;
 
   // Give Gemini a compact row for every customer-facing product. This avoids
   // the former first-30-row limit that left most Chinese descriptions untranslated.
@@ -44,7 +52,7 @@ async function convertSupplierWorkbook(quote: Quote, originalFileName: string, b
   // enough to create the editable baseline. AI enrichment is opt-in so Vercel
   // Hobby functions do not time out before the user can review the quote.
   const aiResult = process.env.MOCOF_ENABLE_GEMINI_TRANSLATION === 'true'
-    ? await processAiExtractionAndConversion(translationRows.slice(0, 80), profile, parsedXlsx.detectedArea)
+    ? await processAiExtractionAndConversion(translationRows.slice(0, 80), profile, areaToRun)
     : { translatedItems: [], exceptions: [] };
   // Gemini supplies English names for recognised source SKUs. The parser keeps
   // the original Chinese source row as the fallback, never a demo placeholder.
@@ -94,7 +102,7 @@ async function convertSupplierWorkbook(quote: Quote, originalFileName: string, b
 
   const hasExceptions = aiResult.exceptions.length > 0;
   quote.worksheets = updatedWorksheets;
-  quote.detectedArea = parsedXlsx.detectedArea || undefined;
+  quote.detectedArea = areaToRun;
   quote.sourceCustomerSqft = parsedXlsx.customerSqft;
   // Keep a clean, source-derived customer workbook. The Prompt Recipe editor
   // always starts from this baseline, so removing a boss command restores the
@@ -111,12 +119,12 @@ async function convertSupplierWorkbook(quote: Quote, originalFileName: string, b
     supplementaryItems: JSON.parse(JSON.stringify(parsedXlsx.supplementaryItems)),
     workbookSheets: JSON.parse(JSON.stringify(quote.workbookSheets)),
   };
-  const selectedAreaRule = profile.areaPromptRules.find((rule) => rule.areaNumber === parsedXlsx.detectedArea);
-  const exactDocumentedPrompts = getDocumentedAreaPrompts(parsedXlsx.detectedArea);
-  quote.documentedPromptExecutions = buildDocumentedPromptExecution(parsedXlsx.detectedArea);
+  const selectedAreaRule = profile.areaPromptRules.find((rule) => rule.areaNumber === areaToRun);
+  const exactDocumentedPrompts = getDocumentedAreaPrompts(areaToRun);
+  quote.documentedPromptExecutions = buildDocumentedPromptExecution(areaToRun);
   quote.promptTrace = [
-    `Detected Area ${parsedXlsx.detectedArea || 'not determined'} from ${parsedXlsx.sheetNames[0] || 'source workbook'}: only real room rows were counted; services/add-ons were excluded.`,
-    `Workbook workflow selected: ${exactDocumentedPrompts?.label || selectedAreaRule?.label || 'Shared MOCOF rules only'}. Every original prompt is shown with an execution result. The converter applies deterministic spreadsheet rules and preserves source-derived values; a prompt that needs unavailable source cells, a logo, or a boss pricing decision is explicitly marked for review rather than replaced with a sample price.`,
+    `Boss selected Area ${areaToRun}. Automatic analysis suggested ${detectedArea || 'an undetermined Area'} from ${parsedXlsx.sheetNames[0] || 'source workbook'}; only real room rows were counted and services/add-ons were excluded.`,
+    `Workbook workflow selected: ${exactDocumentedPrompts?.label || selectedAreaRule?.label || `Area ${areaToRun}`}. The selected Area recipe—not automatic detection—controls this conversion. Every original prompt is shown with an execution result.`,
     ...(exactDocumentedPrompts
       ? exactDocumentedPrompts.prompts.map((prompt, index) =>
           `DOCUMENTED PROMPT ${index + 1}${prompt.category ? ` — ${prompt.category}` : ''}\n${prompt.text}`)
@@ -273,7 +281,7 @@ export async function createApp() {
           error: 'Please choose the original Chinese supplier XLSX file before starting conversion.',
         });
       }
-      res.json(await convertSupplierWorkbook(quote, req.file.originalname, req.file.buffer));
+      res.json(await convertSupplierWorkbook(quote, req.file.originalname, req.file.buffer, Number(req.body?.selectedArea)));
     } catch (err: any) {
       console.error('Conversion endpoint error:', err);
       res.status(500).json({ error: err.message || 'Conversion failed' });
@@ -304,7 +312,7 @@ export async function createApp() {
       db.createProject(newProject);
       db.saveQuote(newQuote);
       db.addAuditLog({ projectId: newProjectId, quoteId: newQuoteId, action: 'PROJECT_CREATED', performedBy: 'User', details: `Created project ${newProject.name} (${newProject.quotationNumber}).` });
-      res.json(await convertSupplierWorkbook(newQuote, req.file.originalname, req.file.buffer));
+      res.json(await convertSupplierWorkbook(newQuote, req.file.originalname, req.file.buffer, Number(input.selectedArea)));
     } catch (err: any) {
       console.error('One-step conversion endpoint error:', err);
       res.status(500).json({ error: err.message || 'Conversion failed' });
