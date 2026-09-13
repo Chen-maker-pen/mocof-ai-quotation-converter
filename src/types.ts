@@ -230,6 +230,8 @@ export interface Quote {
   detectedArea?: number;
   /** Sqft explicitly found in the uploaded supplier document, when present. */
   sourceCustomerSqft?: number;
+  /** Customer budget entered before conversion, in the selected output currency. */
+  customerBudget?: number;
   /** Read-only audit trail of the prompt instructions applied to this upload. */
   promptTrace?: string[];
   documentedPromptExecutions?: DocumentedPromptExecution[];

@@ -418,6 +418,13 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
           <p className="text-xs text-slate-500 mt-0.5 font-medium">
             One full editable quotation workbook. Select a sheet tab, edit cells, then export the saved customer version.
           </p>
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-slate-700">
+            <span>Customer: {project.customerName || '—'}</span>
+            <span>Address: {project.projectAddress || '—'}</span>
+            <span>Budget: {editedQuote.currency} {editedQuote.customerBudget ?? '—'}</span>
+            <span>Home: {editedQuote.sourceCustomerSqft ?? '—'} sqft</span>
+            <span>Currency: {editedQuote.currency}</span>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

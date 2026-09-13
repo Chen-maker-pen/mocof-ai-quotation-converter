@@ -13,9 +13,18 @@ import {
   Zap,
   ShieldCheck,
 } from 'lucide-react';
+import { CurrencyCode } from '../types.js';
+
+export interface ConversionCustomerDetails {
+  customerName: string;
+  customerAddress: string;
+  customerBudget: number;
+  customerSqft: number;
+  currency: CurrencyCode;
+}
 
 interface UploadViewProps {
-  onProcessFile: (file?: File, selectedArea?: number) => Promise<void>;
+  onProcessFile: (file?: File, selectedArea?: number, details?: ConversionCustomerDetails) => Promise<void>;
   isProcessing: boolean;
   conversionError?: string | null;
   currentProjectName?: string;
@@ -36,6 +45,11 @@ export const UploadView: React.FC<UploadViewProps> = ({
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedArea, setSelectedArea] = useState<number | null>(null);
+  const [customerName, setCustomerName] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
+  const [customerBudget, setCustomerBudget] = useState('');
+  const [customerSqft, setCustomerSqft] = useState('');
+  const [currency, setCurrency] = useState<CurrencyCode>('MYR');
   const [dragActive, setDragActive] = useState<boolean>(false);
   const [activeStep, setActiveStep] = useState<number>(0);
 
@@ -82,6 +96,20 @@ export const UploadView: React.FC<UploadViewProps> = ({
   };
 
   const startConversion = async (fileToUse?: File) => {
+    const sqft = Number(customerSqft);
+    const budget = Number(customerBudget);
+    if (!customerName.trim() || !customerAddress.trim()) {
+      alert('Enter the customer name and customer address before conversion.');
+      return;
+    }
+    if (!Number.isFinite(budget) || budget < 0) {
+      alert('Enter a valid customer budget before conversion.');
+      return;
+    }
+    if (!Number.isFinite(sqft) || sqft <= 0) {
+      alert('Enter the customer sqft before conversion. It is required to calculate Supplementary Before Price and After Price.');
+      return;
+    }
     // Simulate step progress visual feedback
     setActiveStep(1);
     const interval = setInterval(() => {
@@ -89,7 +117,13 @@ export const UploadView: React.FC<UploadViewProps> = ({
     }, 700);
 
     try {
-      await onProcessFile(fileToUse || selectedFile || undefined, selectedArea || undefined);
+      await onProcessFile(fileToUse || selectedFile || undefined, selectedArea || undefined, {
+        customerName: customerName.trim(),
+        customerAddress: customerAddress.trim(),
+        customerBudget: budget,
+        customerSqft: sqft,
+        currency,
+      });
     } finally {
       clearInterval(interval);
       setActiveStep(5);
@@ -102,15 +136,41 @@ export const UploadView: React.FC<UploadViewProps> = ({
       <div className="bg-gradient-to-br from-[#183b6b] via-[#0b1f3a] to-[#050505] text-white p-6 rounded-xl shadow-lg shadow-black/20 border border-[#183b6b] space-y-2">
         <div className="flex items-center justify-between">
           <span className="bg-white/10 text-white text-xs px-3 py-0.5 rounded-full border border-white/60 font-semibold tracking-wide">
-            Step 1 of 3: Upload source quotation
+            Customer details → Area recipe → source quotation
           </span>
           <span className="text-xs text-slate-200 font-medium">Chinese supplier file → customer-ready quotation</span>
         </div>
-        <h2 className="text-2xl font-extrabold tracking-tight">Upload the raw Chinese quotation</h2>
+        <h2 className="text-2xl font-extrabold tracking-tight">Create a customer-ready quotation</h2>
         <p className="text-xs text-slate-200 font-normal leading-relaxed">
-          Upload a Chinese supplier workbook (.xlsx) or quotation PDF. The system converts it into MOCOF's editable English customer format.
+          Enter the customer details, choose the Area recipe, then upload the Chinese supplier workbook (.xlsx) or quotation PDF.
         </p>
       </div>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-wide text-[#183b6b]">Step 1 of 3: Customer quotation details</p>
+          <p className="mt-1 text-xs text-slate-600">These values are written into the detail form and the documented spreadsheet cells E2:J4.</p>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <label className="text-xs font-bold text-slate-700">Customer name
+            <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Enter customer name" className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium outline-none focus:border-[#183b6b] focus:ring-2 focus:ring-[#183b6b]/15" />
+          </label>
+          <label className="text-xs font-bold text-slate-700">Customer address
+            <input value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} placeholder="Enter customer address" className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium outline-none focus:border-[#183b6b] focus:ring-2 focus:ring-[#183b6b]/15" />
+          </label>
+          <label className="text-xs font-bold text-slate-700">Customer budget
+            <input type="number" min="0" step="0.01" value={customerBudget} onChange={(event) => setCustomerBudget(event.target.value)} placeholder="Enter customer budget" className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium outline-none focus:border-[#183b6b] focus:ring-2 focus:ring-[#183b6b]/15" />
+          </label>
+          <label className="text-xs font-bold text-slate-700">Output currency
+            <select value={currency} onChange={(event) => setCurrency(event.target.value as CurrencyCode)} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium outline-none focus:border-[#183b6b] focus:ring-2 focus:ring-[#183b6b]/15">
+              <option value="MYR">MYR — Malaysian Ringgit</option><option value="CNY">CNY — Chinese Yuan</option><option value="SGD">SGD — Singapore Dollar</option><option value="USD">USD — US Dollar</option>
+            </select>
+          </label>
+        </div>
+        <label htmlFor="customer-sqft" className="mt-3 block text-xs font-bold text-slate-700">Customer home sqft
+          <input id="customer-sqft" type="number" min="1" step="0.01" inputMode="decimal" value={customerSqft} onChange={(event) => setCustomerSqft(event.target.value)} placeholder="Enter customer sqft" className="mt-1.5 w-full max-w-sm rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-[#183b6b] focus:ring-2 focus:ring-[#183b6b]/15" />
+        </label>
+      </section>
 
       {/* The boss chooses the Area before conversion.  Detection remains an
           audit/safety check on the server; it does not silently choose a
@@ -179,11 +239,11 @@ export const UploadView: React.FC<UploadViewProps> = ({
 
               <button
                 onClick={() => startConversion()}
-                disabled={!selectedFile || !selectedArea}
+                disabled={!selectedFile || !selectedArea || !customerName.trim() || !customerAddress.trim() || !(Number(customerBudget) >= 0) || !(Number(customerSqft) > 0)}
                 className="inline-flex items-center px-5 py-2.5 bg-[#0b1f3a] hover:bg-[#183b6b] text-white text-xs font-semibold rounded-lg shadow-sm shadow-black/20 transition-colors"
               >
                 <Sparkles className="w-4 h-4 mr-1.5 text-white" />
-                {!selectedFile ? 'Choose an XLSX or PDF file first' : !selectedArea ? 'Choose Area 1–10 first' : `Run Area ${selectedArea} Recipe`}
+                {!selectedFile ? 'Choose an XLSX or PDF file first' : !customerName.trim() || !customerAddress.trim() || !(Number(customerBudget) >= 0) || !(Number(customerSqft) > 0) ? 'Enter customer details first' : !selectedArea ? 'Choose Area 1–10 first' : `Run Area ${selectedArea} Recipe`}
               </button>
             </div>
           )}

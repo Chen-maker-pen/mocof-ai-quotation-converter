@@ -14,6 +14,7 @@ import {
 } from './types.js';
 import { Navbar } from './components/Navbar.tsx';
 import { UploadView } from './components/UploadView.tsx';
+import { ConversionCustomerDetails } from './components/UploadView.tsx';
 import { QuotationEditor } from './components/QuotationEditor.tsx';
 import { AdminProfile } from './components/AdminProfile.tsx';
 import { TestRunner } from './components/TestRunner.tsx';
@@ -88,12 +89,13 @@ export default function App() {
     }
   };
 
-  const handleProcessFile = async (file?: File, selectedArea?: number) => {
+  const handleProcessFile = async (file?: File, selectedArea?: number, details?: ConversionCustomerDetails) => {
     setIsProcessing(true);
     setConversionError(null);
     try {
       if (!file) throw new Error('Choose the original Chinese supplier .xlsx or .pdf file first.');
       if (!selectedArea || selectedArea < 1 || selectedArea > 10) throw new Error('Choose the quotation Area (1–10) before conversion.');
+      if (!details?.customerName || !details.customerAddress || !Number.isFinite(details.customerBudget) || details.customerBudget < 0 || !details.customerSqft || details.customerSqft <= 0) throw new Error('Enter customer name, address, budget and sqft before conversion.');
 
       // Create and convert in one API request. This is required on Vercel,
       // where a temporary serverless instance cannot be relied on to retain a
@@ -101,12 +103,14 @@ export default function App() {
       const sourceName = file.name.replace(/\.[^.]+$/, '') || 'New Chinese Supplier Quotation';
       const res = await api.createAndConvertSupplierFile(file, {
         name: sourceName,
-        customerName: 'Customer to be confirmed',
+        customerName: details.customerName,
         customerPhone: '',
         customerEmail: '',
-        projectAddress: 'Site address to be confirmed',
-        currency: 'MYR',
+        projectAddress: details.customerAddress,
+        customerBudget: details.customerBudget,
+        currency: details.currency,
         selectedArea,
+        customerSqft: details.customerSqft,
       });
       setCurrentProject(res.project);
       setCurrentQuote(res.quote);

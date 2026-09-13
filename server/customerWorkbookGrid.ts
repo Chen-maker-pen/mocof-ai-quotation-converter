@@ -40,11 +40,11 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   // H2 = currency/conversion, I2 = whole-house discount and I3 =
   // supplementary discount. Labels must never occupy I2/I3, otherwise the
   // documented I/J price formulas multiply by text instead of a number.
-  // Area 3 document default: I2 is 90%. It is deliberately a visible,
-  // editable input because the boss may confirm a different discount later.
+  // Discount inputs are deliberately visible and editable. The current
+  // Area 3 boss instruction identifies 8E-01 as 0.8 (80%).
   // Every After Price (J) formula reads this one cell.
-  putRow(2, ['', '', '', '', 'Customer Name', project.customerName, 'Currency', quote.exchangeRate.rate, 0.9, '']);
-  putRow(3, ['', '', '', '', 'Address', project.projectAddress, 'Budget', '', 0.8, '']);
+  putRow(2, ['', '', '', '', 'Customer Name', project.customerName, 'Currency', quote.exchangeRate.rate, 0.8, quote.currency]);
+  putRow(3, ['', '', '', '', 'Address', project.projectAddress, 'Budget', quote.customerBudget ?? '', 0.8, '']);
   putRow(4, ['', '', '', '', 'Sqft', quote.sourceCustomerSqft || '', 'RM/sqft', '', '', '']);
   put(5, 1, 'Whole House Total', 'title');
   putRow(6, ['No.', 'Space', '', 'Wall Panel (m²)', 'Cabinet (m²)', 'RM49800', 'RM79800', 'Software Price', 'Before Price', 'After Price'], 'header');
@@ -90,22 +90,23 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   put(layout.supplementaryTitleRow, 1, 'Supplementary', 'title');
   putRow(layout.supplementaryHeaderRow, ['No.', 'Item', '', 'sqft / per', 'Qty / per', 'RM49800', 'RM79800', 'Software Price', 'Before Price', 'After Price'], 'header');
   const sourceSupplementary = new Map(quote.supplementaryItems.map((item) => [item.description.trim().toLowerCase(), item]));
-  // The selected Area document owns this fixed range (Area 3: A20:J33).
+  // The selected Area document owns this fixed range (Area 3: A20:J34).
   // Never append unmatched source services inside it: that moved the
   // documented total rows and made subsequent prompt addresses incorrect.
   const supplementaryRows: Array<readonly [string, number]> = DOCUMENTED_SUPPLEMENTARY_ROWS;
   supplementaryRows.forEach(([description, documentedPer], index) => {
     const sheetRow = layout.supplementaryStartRow + index;
     const source = sourceSupplementary.get(description.toLowerCase());
-    const per = source ? supplementaryPerValue(source) : documentedPer;
-    const sourceSoftware = source ? money(source.totalAmountCents) : 0;
+    // Area 3 uses the boss-approved fixed rates, not a similarly named raw
+    // supplier row. Other Areas retain the source-derived value when present.
+    const per = layout.area === 3 ? documentedPer : (source ? supplementaryPerValue(source) : documentedPer);
+    const sourceSoftware = layout.area === 3 ? 0 : (source ? money(source.totalAmountCents) : 0);
     // The document requires the formula cells even when the input (sqft or
     // price) is not yet present. Never fill a missing input using an old
     // quotation's price; a boss can edit the input cell before export.
-    // Area 3 prompt: Qty / per starts at 0; its price formula uses the
-    // documented sqft/per × customer sqft calculation. It does not multiply
-    // by Qty/per until a later approved area rule says it should.
-    putRow(sheetRow, [index + 1, description, '', per, layout.area === 3 ? 0 : (source?.quantity ?? 0), 0, 0, sourceSoftware, 0, 0], 'input');
+    // Area 3 supplementary rows are fixed service rates. They calculate from
+    // sqft/per × customer sqft, then apply the 8E-01 (0.8) factor in I3.
+    putRow(sheetRow, [index + 1, description, '', per, layout.area === 3 ? 1 : (source?.quantity ?? 0), 0, 0, sourceSoftware, 0, 0], 'input');
     put(sheetRow, 9, 0, 'formula', layout.area === 3 ? `D${sheetRow}*$F$4` : `D${sheetRow}*$F$4*E${sheetRow}`);
     // Prompt 17 for Area 1 specifically fixes the first five standard
     // services to 0 After Price. This must occur before F/G mirror J.

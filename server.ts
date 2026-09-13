@@ -24,7 +24,7 @@ import { buildDocumentedPromptExecution } from './server/documentedRecipeExecuto
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-async function convertSupplierWorkbook(quote: Quote, originalFileName: string, buffer: Buffer, selectedArea?: number) {
+async function convertSupplierWorkbook(quote: Quote, originalFileName: string, buffer: Buffer, selectedArea?: number, customerSqft?: number, customerBudget?: number) {
   const project = db.getProjectById(quote.projectId);
   const profile = db.getConversionProfile();
   const isPdf = /\.pdf$/i.test(originalFileName) || buffer.subarray(0, 4).toString() === '%PDF';
@@ -103,7 +103,16 @@ async function convertSupplierWorkbook(quote: Quote, originalFileName: string, b
   const hasExceptions = aiResult.exceptions.length > 0;
   quote.worksheets = updatedWorksheets;
   quote.detectedArea = areaToRun;
-  quote.sourceCustomerSqft = parsedXlsx.customerSqft;
+  const suppliedSqft = Number(customerSqft);
+  const suppliedBudget = Number(customerBudget);
+  quote.sourceCustomerSqft = Number.isFinite(suppliedSqft) && suppliedSqft > 0 ? suppliedSqft : parsedXlsx.customerSqft;
+  if (!quote.sourceCustomerSqft || quote.sourceCustomerSqft <= 0) {
+    throw new Error('Customer sqft is required for the selected Area pricing formulas. Enter it before conversion; it was not found in the supplier source file.');
+  }
+  if (!Number.isFinite(suppliedBudget) || suppliedBudget < 0) {
+    throw new Error('Customer budget is required before conversion.');
+  }
+  quote.customerBudget = suppliedBudget;
   // Keep a clean, source-derived customer workbook. The Prompt Recipe editor
   // always starts from this baseline, so removing a boss command restores the
   // table instead of stacking irreversible edits on top of an old version.
@@ -125,6 +134,7 @@ async function convertSupplierWorkbook(quote: Quote, originalFileName: string, b
   quote.promptTrace = [
     `Boss selected Area ${areaToRun}. Automatic analysis suggested ${detectedArea || 'an undetermined Area'} from ${parsedXlsx.sheetNames[0] || 'source workbook'}; only real room rows were counted and services/add-ons were excluded.`,
     `Workbook workflow selected: ${exactDocumentedPrompts?.label || selectedAreaRule?.label || `Area ${areaToRun}`}. The selected Area recipe—not automatic detection—controls this conversion. Every original prompt is shown with an execution result.`,
+    ...(areaToRun === 3 ? [`AREA 3 BOSS-CONFIRMED CALCULATION OVERRIDE\n8E-01 is the discount factor 0.8. Supplementary Before Price = sqft/per × customer sqft (F4); After Price = Before Price × I3. The first five standard services remain RM 0.00 after price. Bathroom Shower Screen is included as the fifteenth supplementary row.`] : []),
     ...(exactDocumentedPrompts
       ? exactDocumentedPrompts.prompts.map((prompt, index) =>
           `DOCUMENTED PROMPT ${index + 1}${prompt.category ? ` — ${prompt.category}` : ''}\n${prompt.text}`)
@@ -281,7 +291,7 @@ export async function createApp() {
           error: 'Please choose the original Chinese supplier XLSX file before starting conversion.',
         });
       }
-      res.json(await convertSupplierWorkbook(quote, req.file.originalname, req.file.buffer, Number(req.body?.selectedArea)));
+      res.json(await convertSupplierWorkbook(quote, req.file.originalname, req.file.buffer, Number(req.body?.selectedArea), Number(req.body?.customerSqft), Number(req.body?.customerBudget)));
     } catch (err: any) {
       console.error('Conversion endpoint error:', err);
       res.status(500).json({ error: err.message || 'Conversion failed' });
@@ -312,7 +322,7 @@ export async function createApp() {
       db.createProject(newProject);
       db.saveQuote(newQuote);
       db.addAuditLog({ projectId: newProjectId, quoteId: newQuoteId, action: 'PROJECT_CREATED', performedBy: 'User', details: `Created project ${newProject.name} (${newProject.quotationNumber}).` });
-      res.json(await convertSupplierWorkbook(newQuote, req.file.originalname, req.file.buffer, Number(input.selectedArea)));
+      res.json(await convertSupplierWorkbook(newQuote, req.file.originalname, req.file.buffer, Number(input.selectedArea), Number(input.customerSqft), Number(input.customerBudget)));
     } catch (err: any) {
       console.error('One-step conversion endpoint error:', err);
       res.status(500).json({ error: err.message || 'Conversion failed' });

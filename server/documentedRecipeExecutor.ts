@@ -142,7 +142,7 @@ function getAreaTwoOperationOrder(): AreaRecipeStep[] {
 // Prompt Trace remains an auditable ordered recipe when Area 3 is selected.
 const AREA_THREE_TARGETS: Record<string, Omit<AreaRecipeStep, 'promptNumber'>> = {
   '1': { operation: 'Copy source price content to Before/After columns and create the MOCOF heading.', target: 'E1, A5, H:J', mode: 'deterministic' },
-  '2': { operation: 'Create Area 3 headings, customer inputs, currency, budget and the documented 90% whole-house multiplier. I2 remains editable for a later boss-confirmed discount.', target: 'A6:J6, E2:J4, I2', mode: 'deterministic' },
+  '2': { operation: 'Create Area 3 headings, customer inputs, currency, budget and the whole-house discount multiplier. I2 remains an editable numeric factor.', target: 'A6:J6, E2:J4, I2', mode: 'deterministic' },
   '3': { operation: 'Clear documented Area 3 package input cells.', target: 'D7:G10', mode: 'deterministic' },
   '4': { operation: 'Create six service/add-on rows after the three real rooms.', target: 'A10:B15', mode: 'deterministic' },
   '5': { operation: 'Number the Whole House Total rows.', target: 'A7:A15', mode: 'deterministic' },
@@ -153,14 +153,14 @@ const AREA_THREE_TARGETS: Record<string, Omit<AreaRecipeStep, 'promptNumber'>> =
   '10': { operation: 'Format Area 3 monetary values as RM.', target: 'F7:J16', mode: 'deterministic' },
   '11': { operation: 'Create the Area 3 Supplementary section.', target: 'A18:J18', mode: 'deterministic' },
   '12': { operation: 'Create Supplementary column headings.', target: 'A19:J19', mode: 'deterministic' },
-  '13': { operation: 'Create the fourteen documented Supplementary service rows.', target: 'A20:B33', mode: 'deterministic' },
-  '14': { operation: 'Number Supplementary rows and set its 80% discount input.', target: 'A20:A33, I3', mode: 'deterministic' },
-  '15': { operation: 'Set documented sqft/per, quantity and Before/After price formulas.', target: 'D20:J33', mode: 'deterministic' },
-  '16': { operation: 'Mirror After Price into RM49800/RM79800 and zero the first five standard services.', target: 'F20:G33, J20:J24', mode: 'deterministic' },
-  '17': { operation: 'Calculate Total Supplementary.', target: 'A34:J34', mode: 'deterministic' },
-  '18': { operation: 'Calculate Whole House Price with Supplementary Items.', target: 'A35:J35', mode: 'deterministic' },
+  '13': { operation: 'Create the documented Supplementary service rows plus the boss-confirmed Bathroom Shower Screen row.', target: 'A20:B34', mode: 'deterministic' },
+  '14': { operation: 'Number Supplementary rows and set its 80% discount input.', target: 'A20:A34, I3', mode: 'deterministic' },
+  '15': { operation: 'Set documented sqft/per, quantity and Before/After price formulas.', target: 'D20:J34', mode: 'deterministic' },
+  '16': { operation: 'Mirror After Price into RM49800/RM79800 and zero the first five standard services.', target: 'F20:G34, J20:J24', mode: 'deterministic' },
+  '17': { operation: 'Calculate Total Supplementary.', target: 'A35:J35', mode: 'deterministic' },
+  '18': { operation: 'Calculate Whole House Price with Supplementary Items.', target: 'A36:J36', mode: 'deterministic' },
   '19': { operation: 'Calculate customer final unit price from final total and sqft.', target: 'G4:H4', mode: 'deterministic' },
-  '20': { operation: 'Highlight the cheapest applicable total.', target: 'F35:J35', mode: 'deterministic' },
+  '20': { operation: 'Highlight the cheapest applicable total.', target: 'F36:J36', mode: 'deterministic' },
   '21': { operation: 'Create M&E Work and Curtain section anchors.', target: 'A120:D128', mode: 'source-derived' },
   '22': { operation: 'Create M&E Work and Curtain headings.', target: 'A121:G126', mode: 'source-derived' },
   '23': { operation: 'Add documented M&E and Curtain descriptions.', target: 'E128, E212', mode: 'source-derived' },
@@ -236,9 +236,14 @@ export function getDocumentedRecipeLayout(areaNumber?: number): DocumentedRecipe
     firstMatch(supplementaryText, /start(?:ing)?\s+(?:the\s+)?Sequential number from\s+(?:cell\s*)?A(\d+)/i) ||
     firstMatch(supplementaryText, /Start from\s+B(\d+)/i) ||
     supplementaryHeaderRow + 1;
-  const supplementaryEndRow = supplementaryStartRow + 13;
-  const supplementaryTotalRow =
-    firstMatch(supplementaryText, /Total Supplementary:[\s\S]{0,80}?cell\s+A(\d+)/i) || supplementaryEndRow + 1;
+  // Area 3's original document contains fourteen standard rows. The boss's
+  // later approved worksheet adds Bathroom Shower Screen as row 15.
+  const supplementaryRowCount = area === 3 ? 15 : 14;
+  const supplementaryEndRow = supplementaryStartRow + supplementaryRowCount - 1;
+  const documentedTotalRow = firstMatch(supplementaryText, /Total Supplementary:[\s\S]{0,80}?cell\s+A(\d+)/i);
+  const supplementaryTotalRow = area === 3
+    ? supplementaryEndRow + 1
+    : (documentedTotalRow || supplementaryEndRow + 1);
 
   return {
     area,
@@ -270,6 +275,7 @@ export const DOCUMENTED_SUPPLEMENTARY_ROWS = [
   ['Hacking & Removal', 77],
   ['Grout', 6.5],
   ['Mirror', 50],
+  ['Bathroom Shower Screen', 1000],
 ] as const;
 
 /**
