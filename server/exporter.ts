@@ -163,7 +163,7 @@ export async function generateCustomerXlsx(
     const row = wsWholeHouse.addRow([index + 1, `${room.roomNameEnglish}${room.roomNameChinese && room.roomNameChinese !== room.roomNameEnglish ? ` // ${room.roomNameChinese}` : ''}`, '', '', '', '', software, before, after]);
     row.getCell(7).numFmt = currencyFormat; row.getCell(8).numFmt = currencyFormat; row.getCell(9).numFmt = currencyFormat; borderRow(row); currentRowIndex++;
   });
-  ['Extra m2', 'Curve', 'Wall Panel', 'Aluminium Frame', 'Add-on finishing', 'Deduct Design Fee'].forEach((name, index) => {
+  ['Extra m2', 'Curve', 'Wall Panel', 'Aluminium Frame', 'Add-on finishing', 'Wall bed', 'Pull out mechanism', 'Sliding Door', 'Hidden Door', 'Folding Door', 'Partition at foyer', 'Staircase store room', 'Window', 'Grill door', 'Special off'].forEach((name, index) => {
     const row = wsWholeHouse.addRow([customerWorksheet?.rooms.length ? customerWorksheet.rooms.length + index + 1 : index + 1, name, '', '', 0, 0, 0, 0, 0]);
     for (let col = 5; col <= 9; col++) row.getCell(col).numFmt = currencyFormat;
     borderRow(row); currentRowIndex++;

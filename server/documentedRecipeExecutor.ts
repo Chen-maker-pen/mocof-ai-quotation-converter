@@ -35,6 +35,30 @@ export interface AreaRecipeStep {
   mode: 'deterministic' | 'source-derived' | 'review-required';
 }
 
+/**
+ * These are the standard non-room lines shown after the actual spaces in the
+ * MOCOF Whole House Total.  They are not counted as an Area.  Keeping this
+ * list in one place prevents the grid, detail view and exports from silently
+ * using different layouts.
+ */
+export const WHOLE_HOUSE_SERVICE_ROWS = [
+  'Extra m²',
+  'Curve',
+  'Wall Panel',
+  'Aluminium Frame',
+  'Add-on finishing',
+  'Wall bed',
+  'Pull out mechanism',
+  'Sliding Door',
+  'Hidden Door',
+  'Folding Door',
+  'Partition at foyer',
+  'Staircase store room',
+  'Window',
+  'Grill door',
+  'Special off',
+] as const;
+
 const AREA_ONE_OPERATION_ORDER: AreaRecipeStep[] = [
   ['1', 'Create the MOCOF heading and preserve H as the source price column.', 'E1, A5, H:J', 'deterministic'],
   ['2', 'Create the fixed A:J headings and customer-detail labels.', 'E2:J6', 'deterministic'],
@@ -197,6 +221,20 @@ export function getAreaRecipeSteps(areaNumber?: number): AreaRecipeStep[] {
   if (Number(areaNumber) === 1) return AREA_ONE_OPERATION_ORDER;
   if (Number(areaNumber) === 2) return getAreaTwoOperationOrder();
   if (Number(areaNumber) === 3) return getAreaThreeOperationOrder();
+  // Area 4's document is retained line-by-line in the audit trail.  The
+  // stable workbook steps below are executed by the shared A:J recipe; any
+  // supplier-layout-only step remains visibly marked for review instead of
+  // being claimed as automated.
+  if (Number(areaNumber) === 4) return (getDocumentedAreaPrompts(4)?.prompts || []).map((prompt) => ({
+    promptNumber: prompt.number,
+    operation: /INSERT EXTRA|SERIAL NUMBER|TOTAL PRICE|SUPPLEMENTARY|TOP HEADINGS|CUSTOMER DETAILS/i.test(`${prompt.category}\n${prompt.text}`)
+      ? 'Execute the Area 4 Whole House and Supplementary workbook step.'
+      : (prompt.category || 'Documented Area 4 operation'),
+    target: /INSERT EXTRA/i.test(`${prompt.category}\n${prompt.text}`) ? 'Whole House service rows' : 'Area 4 workbook',
+    mode: /INSERT EXTRA|SERIAL NUMBER|TOTAL PRICE|SUPPLEMENTARY|TOP HEADINGS|CUSTOMER DETAILS/i.test(`${prompt.category}\n${prompt.text}`)
+      ? 'deterministic'
+      : 'review-required',
+  }));
   return (getDocumentedAreaPrompts(areaNumber)?.prompts || []).map((prompt) => ({
     promptNumber: prompt.number,
     operation: prompt.category || 'Documented quotation operation',
@@ -225,9 +263,11 @@ export function getDocumentedRecipeLayout(areaNumber?: number): DocumentedRecipe
   // remaining rows are taken from the exact instructions when they exist.
   const roomStartRow = 7;
   const extrasStartRow = roomStartRow + area;
-  const wholeHouseTotalRow = extrasStartRow + 6;
-  const supplementaryTitleRow =
-    firstMatch(supplementaryText, /Supplementary[\s\S]{0,180}?cell\s+A(\d+)/i) || wholeHouseTotalRow + 2;
+  // The full standard service section is required in every Area.  It takes
+  // precedence over old six-row examples in some historical prompt files so
+  // that the table never overlaps its Supplementary section.
+  const wholeHouseTotalRow = extrasStartRow + WHOLE_HOUSE_SERVICE_ROWS.length;
+  const supplementaryTitleRow = wholeHouseTotalRow + 2;
   // In every Area recipe the headings belong directly below the supplementary
   // title.  Some prompt versions list the heading text before saying its row,
   // so parsing that prose can accidentally capture a later room-detail row.

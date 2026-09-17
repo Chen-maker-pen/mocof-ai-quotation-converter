@@ -1,5 +1,5 @@
 import { CustomerWorkbookSheet, Project, Quote, QuoteRoom, SupplementaryItem, WorkbookCell } from '../src/types.js';
-import { DOCUMENTED_SUPPLEMENTARY_ROWS, getDocumentedRecipeLayout } from './documentedRecipeExecutor.js';
+import { DOCUMENTED_SUPPLEMENTARY_ROWS, getDocumentedRecipeLayout, WHOLE_HOUSE_SERVICE_ROWS } from './documentedRecipeExecutor.js';
 
 const columns = 'ABCDEFGHIJ'.split('');
 const address = (row: number, column: number) => `${columns[column - 1] || 'A'}${row}`;
@@ -65,23 +65,25 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
     row++;
   });
   // These are services/add-ons, not rooms. They are always after the detected room rows.
-  const services = ['Extra m²', 'Curve', 'Wall Panel', 'Aluminium Frame', 'Add-on finishing', 'Deduct Design Fee'];
-  services.forEach((service, index) => {
+  WHOLE_HOUSE_SERVICE_ROWS.forEach((service, index) => {
     const serviceRow = layout.extrasStartRow + index;
     putRow(serviceRow, [layout.roomCount + index + 1, service, '', '', '', 0, 0, 0, 0, 0], 'input');
   });
   // Area 3 prompts: package amounts calculate only from actual m² totals.
   // With no m² in the uploaded source these correctly stay zero rather than
   // borrowing a number from a sample quotation.
-  if (layout.area === 3) {
-    put(10, 6, 0, 'formula', `IF(E${layout.wholeHouseTotalRow}>20,(E${layout.wholeHouseTotalRow}-20)*1999,0)`);
-    put(10, 7, 0, 'formula', `IF(E${layout.wholeHouseTotalRow}>24,(E${layout.wholeHouseTotalRow}-24)*1999,0)`);
-    put(12, 7, 0, 'formula', `IF(D${layout.wholeHouseTotalRow}>6,(D${layout.wholeHouseTotalRow}-6)*650,0)`);
+  if (layout.area === 3 || layout.area === 4) {
+    const extraRow = layout.extrasStartRow;
+    const wallPanelRow = layout.extrasStartRow + 2;
+    put(extraRow, 6, 0, 'formula', `IF(E${layout.wholeHouseTotalRow}>20,(E${layout.wholeHouseTotalRow}-20)*1999,0)`);
+    put(extraRow, 7, 0, 'formula', `IF(E${layout.wholeHouseTotalRow}>24,(E${layout.wholeHouseTotalRow}-24)*1999,0)`);
+    put(wallPanelRow, 7, 0, 'formula', `IF(D${layout.wholeHouseTotalRow}>6,(D${layout.wholeHouseTotalRow}-6)*650,0)`);
     // The document says Project quotations do not receive this deduction.
     // When sqft exists, retain the documented threshold formula so the boss
     // can visibly verify or override it in the sheet.
     const deduction = `IF(F4=0,0,IF(F4<=1500,-1500,IF(F4<=2000,-2000,IF(F4<=2500,-3500,IF(F4<=3000,-6000,0)))))`;
-    [6, 7, 10].forEach((column) => put(15, column, 0, 'formula', deduction));
+    // The deduction is represented as a visible prompt-trace review item;
+    // it is not written into an unrelated standard service row.
   }
   const wholeTotalRow = layout.wholeHouseTotalRow;
   put(wholeTotalRow, 2, 'Total Price:', 'total');

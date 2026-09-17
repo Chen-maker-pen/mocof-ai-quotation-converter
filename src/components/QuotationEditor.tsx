@@ -33,6 +33,8 @@ import {
 import { evaluateWorkbookCell } from '../lib/formulaEvaluator';
 import { api } from '../services/api.js';
 
+const WHOLE_HOUSE_SERVICE_ROWS = ['Extra m²', 'Curve', 'Wall Panel', 'Aluminium Frame', 'Add-on finishing', 'Wall bed', 'Pull out mechanism', 'Sliding Door', 'Hidden Door', 'Folding Door', 'Partition at foyer', 'Staircase store room', 'Window', 'Grill door', 'Special off'];
+
 interface QuotationEditorProps {
   quote: Quote;
   project: Project;
@@ -434,6 +436,13 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
     return { ...fallback, package49800: fallback.after, package79800: fallback.after };
   };
 
+  const gridWholeHouseServiceRows = gridSheet
+    ? WHOLE_HOUSE_SERVICE_ROWS.map((name, index) => {
+      const row = 7 + (activeWorksheet?.rooms.length || 0) + index;
+      return { name, row, package49800: gridCents(`F${row}`), package79800: gridCents(`G${row}`), software: gridCents(`H${row}`), before: gridCents(`I${row}`), after: gridCents(`J${row}`) };
+    })
+    : [];
+
   const supplementaryPerValue = (supp: SupplementaryItem) =>
     supp.perValue ?? Number(String(supp.notes || '').match(/[\d.]+$/)?.[0] || 0);
 
@@ -642,8 +651,8 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
                       <td className="p-2 text-right font-mono">RM {(amounts.software / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(amounts.before / 100).toFixed(2)}</td><td className="p-2 text-right font-mono font-bold">RM {(amounts.after / 100).toFixed(2)}</td>
                     </tr>;
                   })}
-                  {['Extra m²', 'Curve', 'Wall Panel', 'Aluminium Frame', 'Add-on finishing', 'Deduct Design Fee'].map((name, idx) => <tr key={name} className="bg-slate-50"><td className="p-2 text-center font-mono">{(activeWorksheet?.rooms.length || 0) + idx + 1}</td><td className="p-2">{name}</td><td colSpan={4} className="p-2"></td><td className="p-2 text-right font-mono">RM 0.00</td><td className="p-2 text-right font-mono">RM 0.00</td><td className="p-2 text-right font-mono">RM 0.00</td></tr>)}
-                  <tr className="bg-slate-200 font-extrabold"><td colSpan={4} className="p-2 text-right">Total Price:</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).package49800, 0) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).package79800, 0) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).software, 0) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).before, 0) / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {((activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + detailRoomAmounts(room, index).after, 0) / 100).toFixed(2)}</td></tr>
+                  {(gridWholeHouseServiceRows.length ? gridWholeHouseServiceRows : WHOLE_HOUSE_SERVICE_ROWS.map((name) => ({ name, package49800: 0, package79800: 0, software: 0, before: 0, after: 0 }))).map((service, idx) => <tr key={service.name} className="bg-slate-50"><td className="p-2 text-center font-mono">{(activeWorksheet?.rooms.length || 0) + idx + 1}</td><td className="p-2">{service.name}</td><td colSpan={2} className="p-2"></td><td className="p-2 text-right font-mono">RM {(service.package49800 / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(service.package79800 / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(service.software / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(service.before / 100).toFixed(2)}</td><td className="p-2 text-right font-mono">RM {(service.after / 100).toFixed(2)}</td></tr>)}
+                  <tr className="bg-slate-200 font-extrabold"><td colSpan={4} className="p-2 text-right">Total Price:</td>{["package49800", "package79800", "software", "before", "after"].map((field) => <td key={field} className="p-2 text-right font-mono">RM {((((activeWorksheet?.rooms || []).reduce((sum, room, index) => sum + (detailRoomAmounts(room, index) as any)[field], 0) + gridWholeHouseServiceRows.reduce((sum, service) => sum + (service as any)[field], 0)) / 100).toFixed(2))}</td>)}</tr>
                 </tbody>
               </table>
             </div>
