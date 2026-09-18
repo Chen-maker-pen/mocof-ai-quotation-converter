@@ -218,6 +218,31 @@ export interface PromptRecipeBaseline {
   workbookSheets?: CustomerWorkbookSheet[];
 }
 
+/**
+ * A binary-preserved supplier workbook.  Unlike the browser review grid, this
+ * is the actual uploaded XLSX container with only approved worksheet-cell
+ * patches applied.  All drawing/media/style/merge ZIP entries remain in place.
+ */
+export interface PreservedTemplateWorkbook {
+  originalFileName: string;
+  outputFileName: string;
+  /** Base64 is deliberately stored server-side only; it is never returned in quote JSON. */
+  transformedXlsxBase64: string;
+  originalSha256: string;
+  transformedSha256: string;
+  sheetNames: string[];
+  protectedMediaCount: number;
+  protectedDrawingCount: number;
+  protectedMergeCount: number;
+  patches: Array<{
+    sheetName: string;
+    address: string;
+    value?: string | number;
+    formula?: string;
+    promptNumber?: string;
+  }>;
+}
+
 export interface Quote {
   id: string;
   projectId: string;
@@ -239,6 +264,8 @@ export interface Quote {
   bossPromptCommands?: BossPromptCommand[];
   /** Preserved initial conversion so removing a command restores the table accurately. */
   promptRecipeBaseline?: PromptRecipeBaseline;
+  /** The source-layout-preserving customer XLSX. Never use the review grid for XLSX export when this exists. */
+  preservedTemplateWorkbook?: PreservedTemplateWorkbook;
   worksheets: QuoteWorksheet[];
   /** Spreadsheet-first customer output. This is the source of A1/J44 edits. */
   workbookSheets?: CustomerWorkbookSheet[];

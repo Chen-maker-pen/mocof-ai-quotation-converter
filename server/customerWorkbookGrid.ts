@@ -95,7 +95,7 @@ export function buildCustomerWorkbookGrid(quote: Quote, project: Project): Custo
   // The selected Area document owns this fixed range (Area 3: A20:J34).
   // Never append unmatched source services inside it: that moved the
   // documented total rows and made subsequent prompt addresses incorrect.
-  const supplementaryRows: Array<readonly [string, number]> = DOCUMENTED_SUPPLEMENTARY_ROWS;
+  const supplementaryRows: ReadonlyArray<readonly [string, number]> = DOCUMENTED_SUPPLEMENTARY_ROWS;
   supplementaryRows.forEach(([description, documentedPer], index) => {
     const sheetRow = layout.supplementaryStartRow + index;
     const source = sourceSupplementary.get(description.toLowerCase());

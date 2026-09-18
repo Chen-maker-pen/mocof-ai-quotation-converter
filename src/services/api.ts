@@ -11,12 +11,23 @@ import {
   QuoteVersion,
 } from '../types.js';
 
+export interface ConversionJobProjectData extends Partial<Project> {
+  selectedArea: number;
+  customerSqft: number;
+  customerBudget: number;
+}
+
 export interface ProjectDetailResponse {
   project: Project;
   quote: Quote;
   exceptions: ExceptionItem[];
   auditLogs: AuditLog[];
   versions: QuoteVersion[];
+}
+
+export interface PersistentConversionJobResponse {
+  job: { id: string; status: 'queued' | 'processing' | 'completed' | 'failed'; createdAt: string; updatedAt: string; error?: string };
+  result?: any;
 }
 
 export const api = {
@@ -63,7 +74,7 @@ export const api = {
   },
 
   /** Creates a new quotation and converts the uploaded source workbook in one request. */
-  async createAndConvertSupplierFile(file: File, projectData: Partial<Project>): Promise<any> {
+  async createAndConvertSupplierFile(file: File, projectData: ConversionJobProjectData): Promise<any> {
     const formData = new FormData();
     formData.append('supplierFile', file);
     formData.append('projectData', JSON.stringify(projectData));
@@ -78,6 +89,24 @@ export const api = {
       throw new Error(err?.error || `Conversion failed (HTTP ${res.status}): ${text.slice(0, 180) || 'No response body'}`);
     }
     return res.json();
+  },
+
+  /** Start the production background flow: Blob → GitHub Actions worker. */
+  async createPersistentConversionJob(file: File, projectData: ConversionJobProjectData): Promise<PersistentConversionJobResponse> {
+    const formData = new FormData();
+    formData.append('supplierFile', file);
+    formData.append('projectData', JSON.stringify(projectData));
+    const res = await fetch('/api/conversion-jobs', { method: 'POST', body: formData });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Could not queue conversion (HTTP ${res.status}).`);
+    return body;
+  },
+
+  async getPersistentConversionJob(jobId: string): Promise<PersistentConversionJobResponse> {
+    const res = await fetch(`/api/conversion-jobs/${encodeURIComponent(jobId)}`, { cache: 'no-store' });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Could not check conversion job (HTTP ${res.status}).`);
+    return body;
   },
 
   // Update Quote Workspace

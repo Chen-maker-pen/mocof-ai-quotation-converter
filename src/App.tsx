@@ -97,11 +97,11 @@ export default function App() {
       if (!selectedArea || selectedArea < 1 || selectedArea > 10) throw new Error('Choose the quotation Area (1–10) before conversion.');
       if (!details?.customerName || !details.customerAddress || !Number.isFinite(details.customerBudget) || details.customerBudget < 0 || !details.customerSqft || details.customerSqft <= 0) throw new Error('Enter customer name, address, budget and sqft before conversion.');
 
-      // Create and convert in one API request. This is required on Vercel,
-      // where a temporary serverless instance cannot be relied on to retain a
-      // newly-created quote for a second request.
+      // Vercel only queues the job. GitHub Actions runs the selected Area
+      // recipe in the background, so a slow Gemini/workbook conversion does
+      // not hit the Vercel serverless timeout.
       const sourceName = file.name.replace(/\.[^.]+$/, '') || 'New Chinese Supplier Quotation';
-      const res = await api.createAndConvertSupplierFile(file, {
+      const queued = await api.createPersistentConversionJob(file, {
         name: sourceName,
         customerName: details.customerName,
         customerPhone: '',
@@ -112,14 +112,33 @@ export default function App() {
         selectedArea,
         customerSqft: details.customerSqft,
       });
-      setCurrentProject(res.project);
-      setCurrentQuote(res.quote);
-      setExceptions(res.exceptions || []);
-      setVersions([]);
-      showToast('Automatic conversion completed successfully!');
-      // The normal workflow opens the editable customer quotation workbook
-      // immediately. Source/audit panels are not part of the customer editor.
-      setActiveTab('editor');
+
+      const started = Date.now();
+      const maxWaitMs = 30 * 60 * 1000;
+      while (Date.now() - started < maxWaitMs) {
+        await new Promise((resolve) => window.setTimeout(resolve, 4_000));
+        const update = await api.getPersistentConversionJob(queued.job.id);
+        if (update.job.status === 'failed') {
+          throw new Error(update.job.error || 'Background conversion failed.');
+        }
+        if (update.job.status !== 'completed') continue;
+
+        const result = update.result;
+        if (!result?.project || !result?.quote) {
+          throw new Error('The background job finished but its customer quotation result is unavailable.');
+        }
+        setCurrentProject(result.project);
+        setCurrentQuote(result.quote);
+        setExceptions(result.exceptions || []);
+        setVersions([]);
+        showToast('Automatic conversion completed successfully!');
+        // The normal workflow opens the editable customer quotation workbook
+        // immediately. Source/audit panels are not part of the customer editor.
+        setActiveTab('editor');
+        return;
+      }
+
+      throw new Error('Conversion is still running. Keep this page open and try again shortly.');
     } catch (err: any) {
       const message = err.message || 'Conversion failed';
       setConversionError(message);

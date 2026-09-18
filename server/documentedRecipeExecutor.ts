@@ -352,7 +352,7 @@ export function buildDocumentedPromptExecution(areaNumber?: number): DocumentedP
         : mappedStep.mode === 'source-derived'
           ? 'Runs only when its required source value/row is present; otherwise it remains visible for review.'
           : 'Requires a logo, merge decision, project classification or other manager action.'}`;
-      return { promptNumber: prompt.number || index + 1, category: prompt.category || `Documented prompt ${index + 1}`, instruction, status, result };
+      return { promptNumber: Number(prompt.number) || index + 1, category: prompt.category || `Documented prompt ${index + 1}`, instruction, status, result };
     }
 
     // Only label a prompt "applied" when the generator performs its matching
@@ -372,7 +372,7 @@ export function buildDocumentedPromptExecution(areaNumber?: number): DocumentedP
       result = 'Not marked applied: this source-specific or manual instruction is not yet executed safely for every uploaded workbook.';
     }
     return {
-      promptNumber: prompt.number || index + 1,
+      promptNumber: Number(prompt.number) || index + 1,
       category: prompt.category || `Documented prompt ${index + 1}`,
       instruction,
       status,

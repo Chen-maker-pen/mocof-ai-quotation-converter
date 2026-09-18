@@ -1,0 +1,38 @@
+name: MOCOF quotation conversion
+
+on:
+  repository_dispatch:
+    types: [mocof-conversion]
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Persistent MOCOF conversion job id
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MOCOF_JOB_ID: ${{ github.event.client_payload.jobId || github.event.inputs.job_id }}
+      MOCOF_BACKGROUND_WORKER: 'true'
+      # The worker may take time for customer-ready translations and template
+      # recipes. It is deliberately outside the Vercel function time limit.
+      MOCOF_ENABLE_GEMINI_TRANSLATION: 'true'
+      BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - name: Check out the converter
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Convert quotation in the background
+        run: npx tsx worker/githubAction.ts

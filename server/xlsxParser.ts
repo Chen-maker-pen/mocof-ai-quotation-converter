@@ -553,7 +553,7 @@ function buildInitialWorksheetStructure(
   sheetNames: string[],
   images: SourceImage[]
 ): QuoteWorksheet[] {
-  const getImgUrl = (idx: number) => images[idx % images.length]?.dataUrl || SAMPLE_PRODUCT_IMAGES.kitchen;
+  const getImgUrl = (idx: number) => images[idx % images.length]?.dataUrl || '';
 
   const sampleItems: QuoteItem[] = [
     {

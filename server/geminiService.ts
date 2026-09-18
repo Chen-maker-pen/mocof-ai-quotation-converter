@@ -64,6 +64,67 @@ export interface WorkbookPromptOperation {
 }
 
 /**
+ * Builds an executable patch plan from the *complete* selected Area document.
+ * This is intentionally a plan, not a new quotation: Gemini may only target
+ * existing cells in the uploaded source template. Formula evaluation and the
+ * original XLSX drawings/media remain outside the model's control.
+ */
+export async function createTemplateRecipeTransactions(
+  areaPrompts: Array<{ number: string; category: string; text: string }>,
+  cells: Array<{ sheetName: string; address: string; value: string | number }>,
+  customer: { name: string; address: string; sqft: number; budget: number; currency: string },
+): Promise<{ operations: Array<WorkbookPromptOperation & { sheetName: string; promptNumber: string }>; summaries: string[] }> {
+  const ai = getGeminiClient();
+  if (!ai) throw new Error('Template recipe execution requires GEMINI_API_KEY.');
+  const allowed = new Set(cells.map((cell) => `${cell.sheetName}::${cell.address}`.toUpperCase()));
+  const response = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: JSON.stringify({
+      task: 'Execute every listed MOCOF Area prompt in the provided order against a cloned Chinese supplier XLSX template.',
+      nonNegotiableRules: [
+        'Every numbered prompt must be considered in sequence. Return a summary for every prompt number, even when no cell patch is needed.',
+        'The source workbook is immutable. Return only cell changes for its clone; never create/delete sheets, move photos, remove drawings, change merges, styles, row heights or column widths.',
+        'Only target a supplied existing sheetName + A1 address. Do not invent a row, product, quantity, price, discount rate, or customer fact.',
+        'Use Excel formulas (without a leading equals sign) for calculations. Do not replace formulas by guessed totals.',
+        'Use the customer input values only for Customer Name, Address, Sqft, Budget and Currency labels as required by the prompt.',
+        'A number written in scientific notation such as 8E-01 is a numeric factor, not a visible price. Preserve numeric meaning.',
+      ],
+      customer,
+      prompts: areaPrompts,
+      existingCells: cells,
+    }),
+    config: {
+      systemInstruction: 'You are MOCOF’s controlled spreadsheet recipe executor. Return only schema-valid JSON. Accuracy and preservation are more important than completing an uncertain edit.',
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          operations: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: {
+            promptNumber: { type: Type.STRING }, sheetName: { type: Type.STRING }, address: { type: Type.STRING },
+            value: { type: Type.STRING }, formula: { type: Type.STRING }, explanation: { type: Type.STRING },
+          }, required: ['promptNumber', 'sheetName', 'address', 'explanation'] } },
+          summaries: { type: Type.ARRAY, items: { type: Type.STRING } },
+        }, required: ['operations', 'summaries'],
+      },
+    },
+  });
+  const parsed = JSON.parse(response.text || '{}');
+  const operations = (Array.isArray(parsed.operations) ? parsed.operations : [])
+    .filter((op: any) => allowed.has(`${String(op.sheetName)}::${String(op.address).toUpperCase()}`.toUpperCase()))
+    .slice(0, 500)
+    .map((op: any) => ({
+      promptIndex: Number(op.promptNumber) || 0,
+      promptNumber: String(op.promptNumber),
+      sheetName: String(op.sheetName),
+      address: String(op.address).toUpperCase(),
+      value: typeof op.value === 'number' ? op.value : (op.value === undefined ? undefined : String(op.value)),
+      formula: op.formula ? String(op.formula).replace(/^=/, '') : undefined,
+      explanation: String(op.explanation || 'Applied documented recipe patch.'),
+    }));
+  return { operations, summaries: Array.isArray(parsed.summaries) ? parsed.summaries.map(String) : [] };
+}
+
+/**
  * Converts a boss's natural-language instruction into small, reviewable cell
  * transactions. The browser applies only these returned A1/J44 operations;
  * Gemini is never allowed to invent rows, totals, or hidden data structures.

@@ -372,7 +372,8 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
   };
 
   const gridSheet = editedQuote.workbookSheets?.[0];
-  const gridLastRow = gridSheet ? Math.min(Math.max(...Object.values(gridSheet.cells).map((cell) => cell.row), 40), 260) : 0;
+  const gridCells = gridSheet ? Object.values(gridSheet.cells) as Array<{ row: number; column: number; value: unknown }> : [];
+  const gridLastRow = gridSheet ? Math.min(Math.max(...gridCells.map((cell) => cell.row), 40), 260) : 0;
   const gridColumns = gridSheet ? Array.from({ length: gridSheet.columnCount }, (_, index) => String.fromCharCode(65 + index)) : [];
   const gridNumber = (cellAddress: string, fallback = 0) => {
     if (!gridSheet?.cells[cellAddress]) return fallback;
@@ -382,10 +383,10 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
   };
   const gridCents = (cellAddress: string, fallback = 0) => Math.round(gridNumber(cellAddress, fallback / 100) * 100);
   const supplementaryTitleRow = gridSheet
-    ? Object.values(gridSheet.cells).find((cell) => cell.column === 1 && String(cell.value).trim().toLowerCase() === 'supplementary')?.row
+    ? gridCells.find((cell) => cell.column === 1 && String(cell.value).trim().toLowerCase() === 'supplementary')?.row
     : undefined;
   const supplementaryTotalRow = supplementaryTitleRow && gridSheet
-    ? Object.values(gridSheet.cells)
+    ? gridCells
       .filter((cell) => cell.row > supplementaryTitleRow && cell.column === 2 && /^total supplementary\s*:?$/i.test(String(cell.value).trim()))
       .sort((a, b) => a.row - b.row)[0]?.row
     : undefined;

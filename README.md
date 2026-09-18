@@ -98,12 +98,36 @@ bun run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Production architecture: persistent background conversion
+
+Vercel functions are intentionally used only for the website, job creation,
+and job-status polling. They are not a safe place to run a full, multi-step
+Gemini quotation conversion because the request can time out.
+
+```text
+Browser upload → Vercel Blob (immutable source file)
+              → GitHub Actions dispatch
+              → GitHub Actions worker (runs selected Area recipe in order)
+              → Vercel Blob (preserved converted XLSX + result JSON)
+              → Browser polls job status and opens the editable quote
+```
+
+The worker is a safety scaffold until an approved `AreaRecipeExecutor` is
+connected. It fails closed: it will never use the old generic table builder or
+claim a prompt was applied when it was not.
+
 ## Deploy to Vercel
 
 1. Import this repository into Vercel.
-2. In **Project Settings → Environment Variables**, add `GEMINI_API_KEY` for Production and Preview.
-3. Deploy or redeploy the project.
-4. Use the Vercel URL to upload and convert quotations.
+2. In **Project Settings → Environment Variables**, add these values for Production and Preview:
+   - `GEMINI_API_KEY`
+   - `BLOB_READ_WRITE_TOKEN` (create a Vercel Blob store and copy its token)
+   - `GITHUB_DISPATCH_TOKEN` (a GitHub fine-grained token with **Contents: Read and write** for this repository)
+   - `MOCOF_GITHUB_REPOSITORY` = `Chen-maker-pen/mocof-ai-quotation-converter`
+3. In the GitHub repository, open **Settings → Secrets and variables → Actions** and add:
+   - `BLOB_READ_WRITE_TOKEN` (the same Vercel Blob token)
+   - `GEMINI_API_KEY` (the same server-only Gemini key)
+4. Redeploy Vercel. The app can then queue a persistent conversion job instead of waiting inside a browser request. GitHub Actions has a 30-minute timeout for the worker.
 
 > Do not put the Gemini API key in frontend code or commit it to GitHub.
 
