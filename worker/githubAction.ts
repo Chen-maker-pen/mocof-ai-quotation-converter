@@ -67,18 +67,18 @@ async function main() {
   const jobId = String(process.env.MOCOF_JOB_ID || '').trim();
   if (!jobId) throw new Error('MOCOF_JOB_ID is required.');
 
-  const job = await getPersistentConversionJob(jobId);
-  if (!job) throw new Error(`Conversion job ${jobId} was not found.`);
-  if (job.status === 'completed') return;
-
-  await updatePersistentConversionJob(jobId, {
-    status: 'processing',
-    attempt: job.attempt + 1,
-    workerStartedAt: new Date().toISOString(),
-    error: undefined,
-  });
-
   try {
+    const job = await getPersistentConversionJob(jobId);
+    if (!job) throw new Error(`Conversion job ${jobId} was not found.`);
+    if (job.status === 'completed') return;
+
+    await updatePersistentConversionJob(jobId, {
+      status: 'processing',
+      attempt: job.attempt + 1,
+      workerStartedAt: new Date().toISOString(),
+      error: undefined,
+    });
+
     const source = await readSourceForWorker(job);
     const { project, quote } = createInitialProjectAndQuote(job.input.projectData as Record<string, unknown>);
     // This local worker database is used only while constructing the result.
@@ -111,7 +111,14 @@ async function main() {
     console.log(`MOCOF conversion completed: ${jobId}`);
   } catch (error: any) {
     const message = error?.message || 'Background conversion failed.';
-    await updatePersistentConversionJob(jobId, { status: 'failed', error: message });
+    console.error(`MOCOF conversion failed for ${jobId}: ${message}`);
+    try {
+      await updatePersistentConversionJob(jobId, { status: 'failed', error: message });
+    } catch (persistError) {
+      // When the storage credential itself is invalid, preserving failure state
+      // is impossible. Keep the original error visible in the Actions log.
+      console.error('Could not persist failed conversion status:', persistError);
+    }
     throw error;
   }
 }
