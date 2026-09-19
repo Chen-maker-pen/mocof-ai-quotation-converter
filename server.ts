@@ -652,7 +652,7 @@ export async function createApp() {
   });
 
   // Export Customer PDF
-  app.get('/api/quotes/:id/export/pdf', async (req, res) => {
+app.get('/api/quotes/:id/export/pdf', async (req, res) => {
     try {
       const quote = db.getQuoteById(req.params.id);
       if (!quote) return res.status(404).send('Quote not found');
@@ -681,9 +681,65 @@ export async function createApp() {
       console.error('PDF export error:', err);
       res.status(500).send('Failed to generate PDF export');
     }
-  });
+});
 
-  // Version History
+// Direct exports are intentionally independent of the in-memory quotation store.
+// On Vercel, the browser request that created a quote and the export request may
+// be handled by different serverless instances. The client therefore supplies the
+// quotation currently open in the editor.
+function getDirectExportPayload(body: any): { quote: Quote; project: Project } | null {
+  const quote = body?.quote as Quote | undefined;
+  const project = body?.project as Project | undefined;
+  if (!quote || !project) return null;
+  return { quote, project };
+}
+
+app.post('/api/exports/xlsx', async (req, res) => {
+  try {
+    const payload = getDirectExportPayload(req.body);
+    if (!payload) {
+      return res.status(400).json({ error: 'A current quotation and project are required for XLSX export.' });
+    }
+
+    const { quote, project } = payload;
+    const profile = db.getConversionProfile();
+    const xlsxBuffer = quote.preservedTemplateWorkbook?.transformedXlsxBase64
+      ? Buffer.from(quote.preservedTemplateWorkbook.transformedXlsxBase64, 'base64')
+      : await generateCustomerXlsx(quote, project, profile);
+    const fileName = quote.preservedTemplateWorkbook?.outputFileName
+      || `MOCOF_Quotation_${project.quotationNumber || 'Customer_Quote'}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    return res.send(xlsxBuffer);
+  } catch (error: any) {
+    console.error('Direct XLSX export error:', error);
+    return res.status(500).json({ error: 'Failed to generate XLSX export', detail: error?.message });
+  }
+});
+
+app.post('/api/exports/pdf', async (req, res) => {
+  try {
+    const payload = getDirectExportPayload(req.body);
+    if (!payload) {
+      return res.status(400).json({ error: 'A current quotation and project are required for PDF export.' });
+    }
+
+    const { quote, project } = payload;
+    const profile = db.getConversionProfile();
+    const pdfBuffer = await generateCustomerPdf(quote, project, profile);
+    const fileName = `MOCOF_Quotation_${project.quotationNumber || 'Customer_Quote'}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    return res.send(pdfBuffer);
+  } catch (error: any) {
+    console.error('Direct PDF export error:', error);
+    return res.status(500).json({ error: 'Failed to generate PDF export', detail: error?.message });
+  }
+});
+
+// Version History
   app.get('/api/quotes/:id/versions', (req, res) => {
     const versions = db.getQuoteVersions(req.params.id);
     res.json(versions);

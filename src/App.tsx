@@ -200,38 +200,55 @@ export default function App() {
     }
   };
 
-  const handleExportXlsx = () => {
-    if (!currentQuote) return;
-    window.open(`/api/quotes/${currentQuote.id}/export/xlsx`, '_blank');
-    showToast('Exporting customer XLSX workbook...');
-  };
+  const handleExport = async (format: 'xlsx' | 'pdf') => {
+    if (!currentQuote || !currentProject) {
+      showToast('Open a customer quotation before exporting.', 'error');
+      return;
+    }
 
-  const handleExportPdf = async () => {
-    if (!currentQuote) return;
     try {
-      const response = await fetch(`/api/quotes/${currentQuote.id}/export/pdf`);
+      showToast(`Preparing customer ${format.toUpperCase()} export...`);
+      const response = await fetch(`/api/exports/${format}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quote: currentQuote, project: currentProject }),
+      });
+
       if (!response.ok) {
-        const detail = await response.text();
-        throw new Error(detail || `PDF export failed (HTTP ${response.status})`);
+        const contentType = response.headers.get('content-type') || '';
+        let detail = '';
+        if (contentType.includes('application/json')) {
+          const error = await response.json().catch(() => null);
+          detail = error?.detail || error?.error || '';
+        } else {
+          detail = await response.text();
+        }
+        throw new Error(detail || `${format.toUpperCase()} export failed (HTTP ${response.status})`);
       }
 
-      const pdf = await response.blob();
-      if (pdf.size === 0) throw new Error('The server returned an empty PDF file.');
+      const file = await response.blob();
+      if (file.size === 0) throw new Error('The server returned an empty export file.');
 
-      const objectUrl = URL.createObjectURL(pdf);
+      const objectUrl = URL.createObjectURL(file);
       const link = document.createElement('a');
       link.href = objectUrl;
-      link.download = `MOCOF_Quotation_${currentProject?.quotationNumber || 'Customer_Quote'}.pdf`;
+      link.download = format === 'xlsx'
+        ? currentQuote.preservedTemplateWorkbook?.outputFileName
+          || `MOCOF_Quotation_${currentProject.quotationNumber || 'Customer_Quote'}.xlsx`
+        : `MOCOF_Quotation_${currentProject.quotationNumber || 'Customer_Quote'}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(objectUrl);
-      showToast('Customer PDF downloaded successfully!');
+      showToast(`Customer ${format.toUpperCase()} downloaded successfully!`);
     } catch (err: any) {
-      console.error('PDF export failed:', err);
-      showToast(err.message || 'Failed to generate PDF export', 'error');
+      console.error(`${format.toUpperCase()} export failed:`, err);
+      showToast(err.message || `Failed to generate ${format.toUpperCase()} export`, 'error');
     }
   };
+
+  const handleExportXlsx = () => void handleExport('xlsx');
+  const handleExportPdf = () => void handleExport('pdf');
 
   const handleUpdateAdminProfile = async (updated: Partial<ConversionProfile>) => {
     try {
