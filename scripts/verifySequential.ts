@@ -11,6 +11,7 @@ const root = path.resolve('.private-acceptance');
 const allowed = new Set([
   'server/sequentialRecipe.ts', 'server/templateWorkbook.ts', 'server/templateRows.ts',
   'server/templateColumns.ts', 'server/geminiRetry.ts',
+  'server/templateFormat.ts',
   'server/geminiStepPlanner.ts', 'server/geminiConfig.ts', 'server/officialAreaCatalog.ts',
   'src/lib/formulaEvaluator.ts', 'src/types.ts',
 ]);
@@ -46,6 +47,7 @@ async function main() {
   const result = await executeSequentialRecipe(raw, 'source.xlsx', input.area, input.customer, {
     planner: planGeminiStep,
     userDecisions: input.userDecisions || [],
+    resume: input.resume,
     checkpoint: async (checkpoint: any, progress: any) => {
       report = { status: 'running', customer: input.customer, checkpoint };
       await saveReport();
