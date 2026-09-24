@@ -1,0 +1,68 @@
+name: Test Gemini Connection
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Test existing Gemini secret
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        shell: python
+        run: |
+          import os
+          import json
+          import sys
+          import urllib.request
+          import urllib.error
+
+          key = os.environ.get("GEMINI_API_KEY", "").strip()
+
+          if not key:
+              print("FAIL: GEMINI_API_KEY secret is empty or missing.")
+              sys.exit(1)
+
+          url = (
+              "https://generativelanguage.googleapis.com/v1beta/"
+              "models/gemini-2.5-flash:generateContent"
+          )
+
+          payload = {
+              "contents": [{
+                  "parts": [{"text": "Reply with OK only."}]
+              }]
+          }
+
+          request = urllib.request.Request(
+              url,
+              data=json.dumps(payload).encode(),
+              headers={
+                  "Content-Type": "application/json",
+                  "x-goog-api-key": key
+              },
+              method="POST"
+          )
+
+          try:
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  print("HTTP:", response.status)
+                  print("PASS: Gemini connection works.")
+          except urllib.error.HTTPError as error:
+              print("HTTP:", error.code)
+              try:
+                  body = json.loads(error.read().decode())
+                  message = body.get("error", {}).get("message", "")
+                  print("DETAIL:", message.replace(key, "[REDACTED]")[:600])
+              except Exception:
+                  print("Could not read the error details.")
+              sys.exit(1)
+          except Exception:
+              print("FAIL: Network connection or timeout error.")
+              sys.exit(1)
