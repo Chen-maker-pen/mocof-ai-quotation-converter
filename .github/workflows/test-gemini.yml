@@ -3,6 +3,10 @@ name: Test Gemini Connection
 on:
   workflow_dispatch:
     inputs:
+      verify_sequential:
+        description: Run private ordered-prompt acceptance and encrypt the report
+        type: boolean
+        default: false
       verify_worker:
         description: Test the actual worker SDK and structured responses
         type: boolean
@@ -22,21 +26,21 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 120
 
     steps:
       - name: Check out worker code
-        if: inputs.verify_worker
+        if: inputs.verify_worker || inputs.verify_sequential
         uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Set up Node.js
-        if: inputs.verify_worker
+        if: inputs.verify_worker || inputs.verify_sequential
         uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Install dependencies
-        if: inputs.verify_worker
+        if: inputs.verify_worker || inputs.verify_sequential
         run: npm install --no-audit --no-fund
       - name: Run regression checks
         if: inputs.verify_worker
@@ -50,8 +54,25 @@ jobs:
           MOCOF_TEST_SOURCE_JOB_ID: ${{ inputs.source_job_id }}
           MOCOF_TEST_SOURCE_SHA256: ${{ inputs.source_sha256 }}
         run: node --import tsx scripts/verifyGeminiWorker.ts
+      - name: Verify all private recipe sections in order
+        if: inputs.verify_sequential
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          MOCOF_PRIVATE_ACCEPTANCE: ${{ secrets.MOCOF_PRIVATE_ACCEPTANCE }}
+          MOCOF_TEST_SOURCE_JOB_ID: ${{ inputs.source_job_id }}
+          MOCOF_TEST_SOURCE_SHA256: ${{ inputs.source_sha256 }}
+        run: node --import tsx scripts/verifySequential.ts
+      - name: Save encrypted acceptance report
+        if: ${{ always() && inputs.verify_sequential }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-acceptance-encrypted
+          path: private-acceptance.enc
+          retention-days: 3
+          if-no-files-found: error
       - name: Test existing Gemini secret
-        if: ${{ !inputs.verify_worker }}
+        if: ${{ !inputs.verify_worker && !inputs.verify_sequential }}
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         shell: python
