@@ -22,6 +22,7 @@ import { getDocumentedAreaPrompts } from './server/documentedPrompts.js';
 import { buildCustomerWorkbookGrid } from './server/customerWorkbookGrid.js';
 import { buildDocumentedPromptExecution } from './server/documentedRecipeExecutor.js';
 import { createPreservedTemplateWorkbook, TemplateCellPatch } from './server/templateWorkbook.js';
+import { geminiFailure } from './server/geminiConfig.js';
 import { createPersistentConversionJob, getPersistentConversionJob, publicJobStatus, readCompletedConversionResult } from './server/persistentJobs.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -154,7 +155,7 @@ export async function convertSupplierWorkbook(quote: Quote, originalFileName: st
         templateRecipeNotes.push(`Gemini evaluated all ${exactDocumentedPrompts.prompts.length} selected Area prompts in documented order and returned ${templatePatches.length} allowed source-template cell patches.`);
         templateRecipeNotes.push(...plan.summaries.map((summary, index) => `RECIPE STEP ${index + 1}: ${summary}`));
       } catch (error: any) {
-        templateRecipeNotes.push(`RECIPE EXECUTION STOPPED: ${error?.message || 'Gemini did not return a valid patch plan'}. The original template clone was preserved without unverified changes.`);
+        throw geminiFailure(error);
       }
     } else {
       templateRecipeNotes.push('RECIPE EXECUTION NOT STARTED: GEMINI_API_KEY is not available. The original template clone is preserved, but no prompt edit has been claimed as applied.');

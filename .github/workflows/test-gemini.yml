@@ -2,6 +2,19 @@ name: Test Gemini Connection
 
 on:
   workflow_dispatch:
+    inputs:
+      verify_worker:
+        description: Test the actual worker SDK and structured responses
+        type: boolean
+        default: false
+      source_job_id:
+        description: Optional existing private source job (read-only test)
+        type: string
+        default: ''
+      source_sha256:
+        description: Expected source hash; required for private-source test
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -9,10 +22,36 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 15
 
     steps:
+      - name: Check out worker code
+        if: inputs.verify_worker
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        if: inputs.verify_worker
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        if: inputs.verify_worker
+        run: npm install --no-audit --no-fund
+      - name: Run regression checks
+        if: inputs.verify_worker
+        run: node --import tsx --test tests/geminiConfig.test.ts
+      - name: Verify worker with existing secrets
+        if: inputs.verify_worker
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          MOCOF_BACKGROUND_WORKER: 'true'
+          MOCOF_TEST_SOURCE_JOB_ID: ${{ inputs.source_job_id }}
+          MOCOF_TEST_SOURCE_SHA256: ${{ inputs.source_sha256 }}
+        run: node --import tsx scripts/verifyGeminiWorker.ts
       - name: Test existing Gemini secret
+        if: ${{ !inputs.verify_worker }}
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         shell: python
