@@ -9,10 +9,11 @@ import { getDocumentedAreaPrompts } from '../server/documentedPrompts.js';
 import { getPersistentConversionJob, readSourceForWorker } from '../server/persistentJobs.js';
 import type { ConversionProfile } from '../src/types.js';
 
+let stage = 'synthetic structured patch';
 async function main() {
   console.log(`Testing worker SDK model: ${getGeminiModel()}`);
   const synthetic = await createTemplateRecipeTransactions(
-    [{ number: '1', category: 'Synthetic connection test', text: 'Set A1 on Synthetic to Connection verified.' }],
+    [{ number: '1', category: 'Synthetic connection test', text: 'Set A1 on Synthetic to the exact text "Connection verified" (without quotes or a trailing period).' }],
     [{ sheetName: 'Synthetic', address: 'A1', value: 'Pending' }],
     { name: 'Synthetic', address: 'Synthetic', sqft: 1000, budget: 10000, currency: 'MYR' },
   );
@@ -21,6 +22,7 @@ async function main() {
   assert.equal(synthetic.operations[0].value, 'Connection verified');
   console.log('PASS: actual worker SDK returned a valid structured patch.');
 
+  stage = 'synthetic product translation';
   const extracted = await processAiExtractionAndConversion(
     [[1, 'TEST-CAB-001', '衣柜', '卧室', '柜体', '600x500x2400']],
     { companyName: 'MOCOF', rules: {}, bossEditingRules: [], areaPromptRules: [] } as unknown as ConversionProfile,
@@ -31,12 +33,14 @@ async function main() {
   const jobId = process.env.MOCOF_TEST_SOURCE_JOB_ID;
   if (!jobId) { console.log('Private source test not requested.'); return; }
   if (!process.env.MOCOF_TEST_SOURCE_SHA256) throw new Error('Expected private source hash is required.');
+  stage = 'private source identity';
   const job = await getPersistentConversionJob(jobId);
   if (!job) throw new Error('Private source job was not found.');
   const raw = await readSourceForWorker(job);
   if (createHash('sha256').update(raw).digest('hex') !== process.env.MOCOF_TEST_SOURCE_SHA256)
     throw new Error('Stored source does not match the expected Fang fixture. No source conversion was attempted.');
   assert.equal(Number(job.input.projectData.selectedArea), 3);
+  stage = 'Fang title substep';
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(raw as any);
   const sheet = workbook.worksheets[0];
@@ -70,7 +74,7 @@ async function main() {
 
 main().catch((error: any) => {
   // Assertion errors may include private cells as actual/expected values.
-  if (error?.code === 'ERR_ASSERTION') console.error('Worker verification assertion failed. No private values were logged.');
+  if (error?.code === 'ERR_ASSERTION') console.error(`Worker verification assertion failed at ${stage}. No private values were logged.`);
   else if (String(error?.message).startsWith('Stored source') || String(error?.message).startsWith('Private source')) console.error(error.message);
   else console.error(geminiFailure(error).message);
   process.exitCode = 1;
