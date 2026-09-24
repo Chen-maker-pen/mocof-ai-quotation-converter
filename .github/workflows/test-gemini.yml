@@ -40,7 +40,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Run regression checks
         if: inputs.verify_worker
-        run: node --import tsx --test tests/geminiConfig.test.ts
+        run: node --import tsx --test tests/*.test.ts
       - name: Verify worker with existing secrets
         if: inputs.verify_worker
         env:
