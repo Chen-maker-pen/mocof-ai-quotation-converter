@@ -32,6 +32,7 @@ async function main() {
   if (!encoded) throw new Error('Private acceptance input is not configured.');
   const compressed = Buffer.from(encoded, 'base64');
   input = JSON.parse(gunzipSync(compressed, { maxOutputLength: 2000000 }).toString());
+  report = { status: 'starting', customer: input.customer, checkpoint: input.resume };
   console.log(`Acceptance bundle SHA256: ${createHash('sha256').update(compressed).digest('hex')}`);
   if (Object.keys(input.files).length !== allowed.size || Object.keys(input.files).some(n => !allowed.has(n))) throw new Error('Invalid acceptance module list.');
   for (const [filename, content] of Object.entries(input.files)) {
