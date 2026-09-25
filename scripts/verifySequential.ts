@@ -13,7 +13,7 @@ const allowed = new Set([
   'server/templateColumns.ts', 'server/geminiRetry.ts',
   'server/templateFormat.ts',
   'server/geminiStepPlanner.ts', 'server/geminiConfig.ts', 'server/officialAreaCatalog.ts',
-  'src/lib/formulaEvaluator.ts', 'src/types.ts',
+  'src/lib/formulaEvaluator.ts', 'src/lib/excelFormula.ts', 'src/types.ts', 'server/hybridStepPlanner.ts',
 ]);
 let input: any;
 let report: any = { status: 'starting' };
@@ -44,9 +44,9 @@ async function main() {
   const raw = await readSourceForWorker(job);
   if (createHash('sha256').update(raw).digest('hex') !== process.env.MOCOF_TEST_SOURCE_SHA256) throw new Error('Private source hash mismatch.');
   const { executeSequentialRecipe } = await import(pathToFileURL(path.join(root, 'server/sequentialRecipe.ts')).href);
-  const { planGeminiStep } = await import(pathToFileURL(path.join(root, 'server/geminiStepPlanner.ts')).href);
+  const { planHybridStep } = await import(pathToFileURL(path.join(root, 'server/hybridStepPlanner.ts')).href);
   const result = await executeSequentialRecipe(raw, 'source.xlsx', input.area, input.customer, {
-    planner: planGeminiStep,
+    planner: planHybridStep,
     userDecisions: input.userDecisions || [],
     resume: input.resume,
     checkpoint: async (checkpoint: any, progress: any) => {
