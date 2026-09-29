@@ -56,7 +56,7 @@ async function main() {
     },
   });
   const unresolved = result.executions.filter((e: any) => e.status === 'needs_review');
-  report = { status: unresolved.length ? 'needs_review' : 'prompts_complete', customer: input.customer, ...result };
+  report = { status: unresolved.length ? 'needs_review' : 'prompts_complete', customer: input.customer, checkpoint: report.checkpoint, ...result };
   await saveReport();
   console.log(`Ordered prompts visited: ${result.executions.length}; unresolved: ${unresolved.length}. PDF/visual acceptance is a separate required check.`);
   if (unresolved.length) process.exitCode = 1;
