@@ -1,4 +1,4 @@
-name: Test Gemini Connection
+name: MOCOF Connection and Quotation Tests
 
 on:
   workflow_dispatch:
