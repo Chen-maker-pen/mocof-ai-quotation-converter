@@ -28,7 +28,7 @@ async function saveReport() {
   }));
 }
 async function main() {
-  const encoded = process.env.MOCOF_PRIVATE_ACCEPTANCE;
+  const encoded = (process.env.MOCOF_PRIVATE_ACCEPTANCE || '') + (process.env.MOCOF_PRIVATE_ACCEPTANCE_PART2 || '');
   if (!encoded) throw new Error('Private acceptance input is not configured.');
   const compressed = Buffer.from(encoded, 'base64');
   input = JSON.parse(gunzipSync(compressed, { maxOutputLength: 2000000 }).toString());

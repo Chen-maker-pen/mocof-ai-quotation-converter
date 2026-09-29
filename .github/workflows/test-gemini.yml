@@ -60,6 +60,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
           MOCOF_PRIVATE_ACCEPTANCE: ${{ secrets.MOCOF_PRIVATE_ACCEPTANCE }}
+          MOCOF_PRIVATE_ACCEPTANCE_PART2: ${{ secrets.MOCOF_PRIVATE_ACCEPTANCE_PART2 }}
           MOCOF_TEST_SOURCE_JOB_ID: ${{ inputs.source_job_id }}
           MOCOF_TEST_SOURCE_SHA256: ${{ inputs.source_sha256 }}
         run: node --import tsx scripts/verifySequential.ts
