@@ -21,7 +21,6 @@ jobs:
       group: mocof-${{ github.event.client_payload.jobId || github.event.inputs.job_id }}
       cancel-in-progress: false
     env:
-      MOCOF_JOB_ID: ${{ github.event.client_payload.jobId || github.event.inputs.job_id }}
       MOCOF_BACKGROUND_WORKER: 'true'
       # The worker may take time for customer-ready translations and template
       # recipes. It is deliberately outside the Vercel function time limit.
@@ -34,6 +33,17 @@ jobs:
       MOCOF_RECIPE_ASSETS_4: ${{ secrets.MOCOF_RECIPE_ASSETS_4 }}
       MOCOF_RECIPE_ASSETS_5: ${{ secrets.MOCOF_RECIPE_ASSETS_5 }}
     steps:
+      - name: Load private job reference
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+          const id = event.client_payload?.jobId || event.inputs?.job_id;
+          if (!/^job-[0-9]+-[a-f0-9]+$/.test(id || '')) throw Error('Invalid job reference');
+          console.log('::add-mask::' + id);
+          fs.appendFileSync(process.env.GITHUB_ENV, 'MOCOF_JOB_ID=' + id + '\n');
+          NODE
       - name: Check out the converter
         uses: actions/checkout@v4
       - name: Set up Node.js
