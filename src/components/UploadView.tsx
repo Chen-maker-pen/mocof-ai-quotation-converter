@@ -27,6 +27,7 @@ export interface ConversionCustomerDetails {
 interface UploadViewProps {
   onProcessFile: (file?: File, selectedArea?: number, details?: ConversionCustomerDetails) => Promise<void>;
   isProcessing: boolean;
+  onResumeSavedJob?: () => Promise<void>;
   conversionError?: string | null;
   conversionProgress?: string;
   currentProjectName?: string;
@@ -41,6 +42,7 @@ const VERCEL_UPLOAD_SAFE_MAX_BYTES = 4 * 1024 * 1024;
 export const UploadView: React.FC<UploadViewProps> = ({
   onProcessFile,
   isProcessing,
+  onResumeSavedJob,
   conversionError,
   conversionProgress,
   currentProjectName,
@@ -255,7 +257,8 @@ export const UploadView: React.FC<UploadViewProps> = ({
         </div>
       )}
 
-      {!isProcessing && <p className="text-center text-xs text-slate-500">Step 3: the selected Area recipe converts the quotation. Then review, edit if needed, and export PDF or Excel.</p>}
+      {!isProcessing && conversionError && onResumeSavedJob && <button onClick={onResumeSavedJob} className="rounded bg-blue-800 px-4 py-2 text-white">Resume saved job (after quota resets if limited)</button>}
+      {!isProcessing && <p className="text-center text-xs text-slate-500">Step 3: the selected Area recipe converts the quotation. Then review and download PDF or Excel.</p>}
 
       {/* Real-Time Processing Progress Panel */}
       {isProcessing && (

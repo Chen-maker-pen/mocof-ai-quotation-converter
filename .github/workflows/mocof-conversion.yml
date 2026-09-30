@@ -46,6 +46,9 @@ jobs:
           NODE
       - name: Check out the converter
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.ref || github.ref }}
+          persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:

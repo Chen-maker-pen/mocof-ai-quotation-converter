@@ -81,7 +81,7 @@ function githubRepository() {
 async function dispatchGitHubWorker(jobId: string) {
   const repository = githubRepository();
   const ref = process.env.VERCEL_GIT_COMMIT_REF || 'main';
-  const response = await fetch(`https://api.github.com/repos/${repository}/actions/workflows/mocof-conversion.yml/dispatches`, {
+  const response = await fetch(`https://api.github.com/repos/${repository}/dispatches`, {
     method: 'POST',
     headers: {
       Accept: 'application/vnd.github+json',
@@ -90,7 +90,7 @@ async function dispatchGitHubWorker(jobId: string) {
       'User-Agent': 'mocof-quotation-converter',
     },
     body: JSON.stringify({
-      ref, inputs: { job_id: jobId },
+      event_type: 'mocof-conversion', client_payload: { jobId, ref },
     }),
   });
   if (!response.ok) {
@@ -234,4 +234,16 @@ export function browserConversionResult(result: CompletedConversionResult | null
  return {...result, quote: {...quote, worksheets: [], promptRecipeBaseline: undefined,
    preservedTemplateWorkbook: quote.preservedTemplateWorkbook ? {...quote.preservedTemplateWorkbook,transformedXlsxBase64: '', operations: [], patches: []} : undefined,
  }};
+}
+
+export async function resumePersistentConversionJob(id:string) {
+ const job=await getPersistentConversionJob(id);
+ if(!job)throw Error('Saved job not found.');
+ if(job.status!=='failed')return job;
+ const checkpoint=await readRecipeCheckpoint(id);
+ if(checkpoint?.executions.some(e=>e.status==='needs_review'||e.status==='partially_applied'))throw Error('This job needs a prompt or source-data review before it can continue.');
+ await updatePersistentConversionJob(id,{status:'queued',error:undefined});
+ try { await dispatchGitHubWorker(id); }
+ catch(error){await updatePersistentConversionJob(id,{status:'failed',error:(error as Error).message});throw error;}
+ return (await getPersistentConversionJob(id))!;
 }

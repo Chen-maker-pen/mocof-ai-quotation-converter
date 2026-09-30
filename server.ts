@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import {browserConversionResult, readJobExport} from './server/persistentJobs.js';
+import {resumePersistentConversionJob, browserConversionResult, readJobExport} from './server/persistentJobs.js';
 import { runSourceRecipe, type SourceRecipeOptions } from './server/sourceRecipe.js';
 import { officialAreaCatalog } from './server/officialAreaCatalog.js';
 import { exportTemplate } from './server/templateExport.js';
@@ -229,6 +229,11 @@ export async function createApp() {
       console.error('Persistent conversion job creation error:', error);
       res.status(503).json({ error: error?.message || 'Could not queue persistent conversion.' });
     }
+  });
+
+  app.post('/api/conversion-jobs/:id/resume', async (req,res) => {
+    try {res.json({job: publicJobStatus(await resumePersistentConversionJob(req.params.id))});}
+    catch(error:any){res.status(409).json({error:error.message});}
   });
 
   app.get('/api/conversion-jobs/:id', async (req, res) => {

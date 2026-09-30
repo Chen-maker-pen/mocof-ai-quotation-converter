@@ -127,6 +127,17 @@ export default function App() {
       throw new Error('Conversion is still running. Reopen this page to resume checking.');
   };
 
+  const resumeSavedJob = async () => {
+    const id=localStorage.getItem('mocof-last-job'); if(!id)return;
+    setIsProcessing(true);setConversionError(null);
+    try {
+      const response=await fetch(`/api/conversion-jobs/${id}/resume`,{method:'POST'});
+      const result=await response.json();if(!response.ok)throw Error(result.error || 'Could not resume job.');
+      await watchJob(id);
+    }catch(error:any){setConversionError(error.message);}
+    finally {setIsProcessing(false);}
+  };
+
   const handleProcessFile = async (file?: File, selectedArea?: number, details?: ConversionCustomerDetails) => {
     setIsProcessing(true);
     setConversionError(null);
@@ -329,6 +340,7 @@ export default function App() {
             isProcessing={isProcessing}
             conversionError={conversionError}
             conversionProgress={conversionProgress}
+            onResumeSavedJob={localStorage.getItem('mocof-last-job') ? resumeSavedJob : undefined}
             currentProjectName={currentProject?.name}
             quotationNumber={currentProject?.quotationNumber}
           />
