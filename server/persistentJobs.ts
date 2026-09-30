@@ -80,7 +80,7 @@ function githubRepository() {
  */
 async function dispatchGitHubWorker(jobId: string) {
   const repository = githubRepository();
-  const ref = process.env.VERCEL_GIT_COMMIT_REF || 'main';
+  const ref = process.env.VERCEL_GIT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_REF || 'main';
   const response = await fetch(`https://api.github.com/repos/${repository}/dispatches`, {
     method: 'POST',
     headers: {

@@ -174,15 +174,16 @@ export function planDeterministicStep(context: StepContext): StepPlan | undefine
     case 'A3-S030': {
       if(!context.userDecisions?.includes('Set absent Guest Bedroom and Kids Room totals H7/H8 to 0.')) return undefined;
       const cells=Object.values(matches[0].cells);
-      for(const [room,target] of [['主卧房','H9'],['客餐厅','H10']]) {
+      for(const [room,target] of [['客卧房','H7'],['儿童房','H8'],['主卧房','H9'],['客餐厅','H10']]) {
         const headings=cells.filter(c=>c.column===1&&c.row>35&&String(c.value).includes(room));
+        if(headings.length===0 && (target==='H7'||target==='H8')){set(target,0);continue;}
         if(headings.length!==1)return {stepId:step.id,status:'needs_review',reason:`Cannot uniquely locate ${room} detail heading.`,operations:[],executor:'deterministic'};
         const totals=cells.filter(c=>c.column===1&&c.row>headings[0].row&&/^Total Price[:：]?$/.test(String(c.value).trim())).sort((a,b)=>a.row-b.row);
         const total=totals[0];
         if(!total || typeof matches[0].cells[`H${total.row}`]?.value!=='number')return {stepId:step.id,status:'needs_review',reason:`Missing numeric source total for ${room}.`,operations:[],executor:'deterministic'};
         formula(target,`H${total.row}`);
       }
-      set('H7',0);set('H8',0);break;
+      break;
     }
 
   }
