@@ -479,7 +479,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             )}
           </div>
           <p className="text-xs text-slate-500 mt-0.5 font-medium">
-            One full editable quotation workbook. Select a sheet tab, edit cells, then export the saved customer version.
+            {editedQuote.conversionJobId ? 'Completed workbook. Inspect the prompt trace and download the saved Excel or PDF.' : 'Select a sheet tab, edit cells, then export the saved customer version.'}
           </p>
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-slate-700">
             <span>Customer: {project.customerName || '—'}</span>
@@ -545,6 +545,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
           </button>
 
           {/* Export Actions */}
+          {editedQuote.conversionJobId ? <a href={`/api/conversion-jobs/${editedQuote.conversionJobId}/export/xlsx`} download className="px-3 py-2 bg-[#5f6faf] text-white text-xs font-semibold rounded-lg">Export XLSX</a> : (
           <button
             onClick={onExportXlsx}
             className="px-3 py-2 bg-[#5f6faf] hover:bg-[#323970] text-white text-xs font-semibold rounded-lg shadow-xs transition-colors inline-flex items-center"
@@ -552,7 +553,9 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" />
             Export XLSX
           </button>
+          )}
 
+          {editedQuote.conversionJobId ? <a href={`/api/conversion-jobs/${editedQuote.conversionJobId}/export/pdf`} download className="px-3 py-2 bg-[#5f6faf] text-white text-xs font-semibold rounded-lg">Export PDF</a> : (
           <button
             onClick={onExportPdf}
             className="px-3 py-2 bg-[#a6b5de] hover:bg-[#7787c6] text-[#323970] text-xs font-semibold rounded-lg shadow-xs transition-colors inline-flex items-center"
@@ -560,6 +563,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             <FileText className="w-3.5 h-3.5 mr-1.5" />
             Export PDF
           </button>
+          )}
         </div>
       </div>
 
