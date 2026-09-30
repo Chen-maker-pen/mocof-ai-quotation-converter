@@ -70,6 +70,8 @@ export async function finishQuotationLayout(zip:JSZip,sheetFile:string):Promise<
  for(const r of [34,35]){merge(`A${r}:E${r}`);format(`A${r}`,11,true);height(r,32);}
  for(let r=7;r<=15;r++){format(`B${r}`,10,true);height(r,30);}
  for(const row of [212,213]){merge(`E${row}:H${row}`);format(`E${row}`,10,true);height(row,row===212?100:36);}
+ merge('E128:F128');format('E128',10,true);height(128,100);
+ format('D122',10,true);height(122,35);
  format('A133',10,true);for(let r=133;r<=138;r++)height(r,60);
  styles=styles.replace(/<fonts\b[^>]*>[\s\S]*?<\/fonts>/,`<fonts count="${fonts.length}">${fonts.join('')}</fonts>`).replace(/<cellXfs\b[^>]*>[\s\S]*?<\/cellXfs>/,`<cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs>`);
  zip.file(sheetFile,xml);zip.file('xl/styles.xml',styles);return new Set([sheetFile,'xl/styles.xml']);
