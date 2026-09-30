@@ -50,6 +50,15 @@ export const ConversionResultView: React.FC<ConversionResultViewProps> = ({
 
   const unresolvedExceptions = exceptions.filter((e) => !e.resolved);
 
+  if (quote.preservedTemplateWorkbook) return (
+    <div className="rounded-xl border border-amber-300 bg-white p-6 space-y-4">
+      <h2 className="text-lg font-bold">Source workbook draft — review required</h2>
+      <p>The source template is preserved. Open its worksheet grid to review customer changes and the exact prompt trace. Pricing and totals are not validated yet.</p>
+      <p>{quote.preservedTemplateWorkbook.sheetNames.length} sheets · {quote.preservedTemplateWorkbook.protectedMediaCount} media files · {quote.preservedTemplateWorkbook.protectedMergeCount} merged ranges</p>
+      <button onClick={onNavigateEditor} className="rounded bg-blue-800 px-4 py-2 text-white">Open source workbook and prompt trace</button>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       {/* Top Action Header */}

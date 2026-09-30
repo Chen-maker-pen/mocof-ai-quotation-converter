@@ -9,7 +9,7 @@ import { getPersistentConversionJob, readSourceForWorker } from '../server/persi
 // secret. Customer content never enters this public repository or plaintext logs.
 const root = path.resolve('.private-acceptance');
 const allowed = new Set([
-  'server/sequentialRecipe.ts', 'server/templateWorkbook.ts', 'server/templateRows.ts',
+  'server/sequentialRecipe.ts', 'server/templateBrand.ts', 'server/officialBrandAsset.ts', 'server/templateWorkbook.ts', 'server/templateRows.ts',
   'server/templateColumns.ts', 'server/geminiRetry.ts',
   'server/templateFormat.ts',
   'server/geminiStepPlanner.ts', 'server/geminiConfig.ts', 'server/officialAreaCatalog.ts',

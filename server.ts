@@ -1,4 +1,9 @@
 import 'dotenv/config';
+import {browserConversionResult, readJobExport} from './server/persistentJobs.js';
+import { runSourceRecipe, type SourceRecipeOptions } from './server/sourceRecipe.js';
+import { officialAreaCatalog } from './server/officialAreaCatalog.js';
+import { exportTemplate } from './server/templateExport.js';
+import { attachmentDisposition } from './server/downloadHeaders.js';
 
 /**
  * MOCOF AI Integrated Quotation Converter Express Server
@@ -22,7 +27,6 @@ import { getDocumentedAreaPrompts } from './server/documentedPrompts.js';
 import { buildCustomerWorkbookGrid } from './server/customerWorkbookGrid.js';
 import { buildDocumentedPromptExecution } from './server/documentedRecipeExecutor.js';
 import { createPreservedTemplateWorkbook, TemplateCellPatch } from './server/templateWorkbook.js';
-import { geminiFailure } from './server/geminiConfig.js';
 import { createPersistentConversionJob, getPersistentConversionJob, publicJobStatus, readCompletedConversionResult } from './server/persistentJobs.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -38,10 +42,12 @@ function columnAddress(column: number): string {
   return result;
 }
 
-export async function convertSupplierWorkbook(quote: Quote, originalFileName: string, buffer: Buffer, selectedArea?: number, customerSqft?: number, customerBudget?: number) {
+export async function convertSupplierWorkbook(quote: Quote, originalFileName: string, buffer: Buffer, selectedArea?: number, customerSqft?: number, customerBudget?: number, recipeOptions: SourceRecipeOptions = {}) {
   const project = db.getProjectById(quote.projectId);
   const profile = db.getConversionProfile();
   const isPdf = /\.pdf$/i.test(originalFileName) || buffer.subarray(0, 4).toString() === '%PDF';
+  if (isPdf) throw new Error('Source-template conversion requires an XLSX upload. PDF input is not supported.');
+  if (!officialAreaCatalog.some(r => r.area === Number(selectedArea))) throw new Error('The selected Area has no official prompt document.');
   const parsedXlsx = isPdf
     ? await parseSupplierPdfBuffer(buffer, originalFileName)
     : await parseSupplierXlsxBuffer(buffer, originalFileName);
@@ -65,9 +71,7 @@ export async function convertSupplierWorkbook(quote: Quote, originalFileName: st
   // The spreadsheet recipe, source totals and deterministic translations are
   // enough to create the editable baseline. AI enrichment is opt-in so Vercel
   // Hobby functions do not time out before the user can review the quote.
-  const aiResult = process.env.MOCOF_ENABLE_GEMINI_TRANSLATION === 'true'
-    ? await processAiExtractionAndConversion(translationRows.slice(0, 80), profile, areaToRun)
-    : { translatedItems: [], exceptions: [] };
+  const aiResult: Awaited<ReturnType<typeof processAiExtractionAndConversion>> = { translatedItems: [], exceptions: [] };
   // Gemini supplies English names for recognised source SKUs. The parser keeps
   // the original Chinese source row as the fallback, never a demo placeholder.
   const translationsBySku = new Map(
@@ -128,52 +132,15 @@ export async function convertSupplierWorkbook(quote: Quote, originalFileName: st
   }
   quote.customerBudget = suppliedBudget;
   const exactDocumentedPrompts = getDocumentedAreaPrompts(areaToRun);
-  const templateRecipeNotes: string[] = [];
-  let templatePatches: TemplateCellPatch[] = [];
-  if (!isPdf) {
-    const templateCells = Object.entries(parsedXlsx.rawRowsBySheet).flatMap(([sheetName, rows]) =>
-      rows.flatMap((row, rowIndex) => row.map((value, columnIndex) => ({
-        sheetName,
-        address: `${columnAddress(columnIndex + 1)}${rowIndex + 1}`,
-        value: typeof value === 'number' ? value : String(value ?? ''),
-      })).filter((cell) => cell.value !== ''))
-    ).slice(0, 2000);
-    if (process.env.GEMINI_API_KEY && exactDocumentedPrompts) {
-      try {
-        const plan = await createTemplateRecipeTransactions(
-          exactDocumentedPrompts.prompts,
-          templateCells,
-          {
-            name: project?.customerName || '', address: project?.projectAddress || '',
-            sqft: quote.sourceCustomerSqft, budget: quote.customerBudget, currency: quote.currency,
-          },
-        );
-        templatePatches = plan.operations.map((operation) => ({
-          sheetName: operation.sheetName, address: operation.address, value: operation.value,
-          formula: operation.formula, promptNumber: operation.promptNumber,
-        }));
-        templateRecipeNotes.push(`Gemini evaluated all ${exactDocumentedPrompts.prompts.length} selected Area prompts in documented order and returned ${templatePatches.length} allowed source-template cell patches.`);
-        templateRecipeNotes.push(...plan.summaries.map((summary, index) => `RECIPE STEP ${index + 1}: ${summary}`));
-      } catch (error: any) {
-        throw geminiFailure(error);
-      }
-    } else {
-      templateRecipeNotes.push('RECIPE EXECUTION NOT STARTED: GEMINI_API_KEY is not available. The original template clone is preserved, but no prompt edit has been claimed as applied.');
-    }
-    quote.preservedTemplateWorkbook = await createPreservedTemplateWorkbook(buffer, originalFileName, templatePatches);
-  } else {
-    quote.preservedTemplateWorkbook = undefined;
-  }
-  // Keep a clean, source-derived customer workbook. The Prompt Recipe editor
-  // always starts from this baseline, so removing a boss command restores the
-  // table instead of stacking irreversible edits on top of an old version.
+  const sourceResult = await runSourceRecipe(buffer, originalFileName, areaToRun, {
+    name: project?.customerName || '', address: project?.projectAddress || '',
+    sqft: quote.sourceCustomerSqft, budget: quote.customerBudget, currency: quote.currency, quotationType: project?.quotationType,
+  }, recipeOptions);
+  const templateRecipeNotes = ['Every official section was submitted in order to the step planner. Only validated changes were committed; unresolved operations remain visible in the prompt trace.'];
+  const templatePatches = sourceResult.patches;
+  quote.preservedTemplateWorkbook = sourceResult.preserved;
   quote.bossPromptCommands = [];
-  // Build an addressable A:J workbook after formulas and translations are
-  // finalised.  The prompt document uses cell references (E1, I2, J44…);
-  // storing this grid makes those instructions auditable and editable.
-  quote.workbookSheets = buildCustomerWorkbookGrid(quote, project || {
-    id: quote.projectId, name: '', customerName: '', customerPhone: '', customerEmail: '', projectAddress: '', quotationNumber: '', status: 'Processing', currency: quote.currency, createdAt: '', updatedAt: '', currentQuoteId: quote.id, totalMYRCents: 0,
-  });
+  quote.workbookSheets = sourceResult.workbookSheets;
   quote.promptRecipeBaseline = {
     worksheets: JSON.parse(JSON.stringify(updatedWorksheets)),
     supplementaryItems: JSON.parse(JSON.stringify(parsedXlsx.supplementaryItems)),
@@ -183,20 +150,7 @@ export async function convertSupplierWorkbook(quote: Quote, originalFileName: st
   // Never label a documented instruction “applied” merely because it is shown
   // in the trace. A prompt is applied only when the recipe plan produced at
   // least one validated patch for that numbered instruction.
-  const patchedPromptNumbers = new Set(templatePatches.map((patch) => String(patch.promptNumber || '')));
-  quote.documentedPromptExecutions = buildDocumentedPromptExecution(areaToRun).map((execution) => {
-    const promptNumber = String(execution.promptNumber);
-    if (patchedPromptNumbers.has(promptNumber)) {
-      return { ...execution, status: 'applied' as const, result: 'Applied as a validated cell patch to the preserved source-template clone.' };
-    }
-    return {
-      ...execution,
-      status: 'needs_review' as const,
-      result: process.env.GEMINI_API_KEY
-        ? 'No safe cell patch was returned for this instruction. The source template was left unchanged rather than guessing.'
-        : 'Awaiting Gemini recipe execution. The source template was left unchanged.',
-    };
-  });
+  quote.documentedPromptExecutions = sourceResult.executions;
   quote.promptTrace = [
     !isPdf
       ? `SOURCE TEMPLATE PRESERVED: ${quote.preservedTemplateWorkbook?.sheetNames.length || 0} sheets, ${quote.preservedTemplateWorkbook?.protectedMediaCount || 0} embedded media files, ${quote.preservedTemplateWorkbook?.protectedDrawingCount || 0} drawing files and ${quote.preservedTemplateWorkbook?.protectedMergeCount || 0} merged cells were copied unchanged. The original upload is never edited.`
@@ -204,14 +158,19 @@ export async function convertSupplierWorkbook(quote: Quote, originalFileName: st
     ...templateRecipeNotes,
     `Boss selected Area ${areaToRun}. Automatic analysis suggested ${detectedArea || 'an undetermined Area'} from ${parsedXlsx.sheetNames[0] || 'source workbook'}; only real room rows were counted and services/add-ons were excluded.`,
     `Workbook workflow selected: ${exactDocumentedPrompts?.label || selectedAreaRule?.label || `Area ${areaToRun}`}. The selected Area recipe—not automatic detection—controls this conversion. Every original prompt is shown with an execution result.`,
-    ...(areaToRun === 3 ? [`AREA 3 BOSS-CONFIRMED CALCULATION OVERRIDE\n8E-01 is the discount factor 0.8. Supplementary Before Price = sqft/per × customer sqft (F4); After Price = Before Price × I3. The first five standard services remain RM 0.00 after price. Bathroom Shower Screen is included as the fifteenth supplementary row.`] : []),
     ...(exactDocumentedPrompts
       ? exactDocumentedPrompts.prompts.map((prompt, index) =>
           `DOCUMENTED PROMPT ${index + 1}${prompt.category ? ` — ${prompt.category}` : ''}\n${prompt.text}`)
       : (selectedAreaRule ? selectedAreaRule.instructions.split(/\n+/).map((line) => line.trim()).filter(Boolean) : [])),
   ];
+  // The source-preserving recipe, not the legacy reconstructed grid, owns the displayed total.
+  const summary = sourceResult.workbookSheets.find(sheet => sheet.cells.A5?.value === 'Whole House Total');
+  const recipeTotal = summary?.cells.J35?.value;
+  if (areaToRun === 3 && typeof recipeTotal === 'number' && Number.isFinite(recipeTotal)) {
+    wholeHouseTotals.grandTotalCents = Math.round(recipeTotal * 100);
+  }
   quote.wholeHouseTotals = wholeHouseTotals;
-  quote.status = hasExceptions ? 'Generated – Exceptions Need Review' : 'Generated – Ready for Approval';
+  quote.status = 'Generated – Exceptions Need Review';
   quote.updatedAt = new Date().toISOString();
   db.saveQuote(quote);
   if (project) {
@@ -256,9 +215,11 @@ export async function createApp() {
   // Gemini recipe execution never happens in this 60-second serverless route.
   app.post('/api/conversion-jobs', upload.single('supplierFile'), async (req, res) => {
     try {
-      if (!req.file) return res.status(400).json({ error: 'Choose the original Chinese supplier XLSX or PDF file first.' });
+      if (!req.file) return res.status(400).json({ error: 'Choose the original Chinese supplier XLSX file first.' });
+      if (!/\.xlsx$/i.test(req.file.originalname) || req.file.buffer.subarray(0, 2).toString() !== 'PK') return res.status(400).json({ error: 'Source-preserving conversion requires a valid XLSX file.' });
       const input = req.body.projectData ? JSON.parse(req.body.projectData) : {};
       const selectedArea = Number(input.selectedArea);
+      if (!String(input.customerName || '').trim() || !String(input.projectAddress || '').trim() || !Number.isFinite(Number(input.customerSqft)) || Number(input.customerSqft) <= 0 || !Number.isFinite(Number(input.customerBudget)) || Number(input.customerBudget) < 0) return res.status(400).json({ error: 'Customer name, address, positive sqft and nonnegative budget are required.' });
       if (!Number.isInteger(selectedArea) || selectedArea < 1 || selectedArea > 10) return res.status(400).json({ error: 'Choose Area 1–10 before starting the conversion job.' });
       const job = await createPersistentConversionJob(req.file.buffer, req.file.originalname, req.file.mimetype, {
         ...input, selectedArea, customerSqft: Number(input.customerSqft), customerBudget: Number(input.customerBudget),
@@ -276,10 +237,23 @@ export async function createApp() {
       if (!job) return res.status(404).json({ error: 'Conversion job not found or expired.' });
       if (job.status !== 'completed') return res.json({ job: publicJobStatus(job) });
       const result = await readCompletedConversionResult(job);
-      res.json({ job: publicJobStatus(job), result });
+      res.json({ job: publicJobStatus(job), result: browserConversionResult(result) });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || 'Could not read conversion job status.' });
     }
+  });
+
+  app.get('/api/conversion-jobs/:id/export/:format',async(req,res)=>{
+    try {
+      if(!['xlsx','pdf'].includes(req.params.format))return res.status(400).json({error:'Invalid export format.'});
+      const job=await getPersistentConversionJob(req.params.id);
+      if(!job || job.status!=='completed')return res.status(404).json({error:'Completed quotation not found.'});
+      const format=req.params.format as 'xlsx'|'pdf';
+      const buffer=await readJobExport(job,format);
+      res.setHeader('Content-Type',format==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition',attachmentDisposition(`MOCOF_Quotation.${format}`));
+      return res.send(buffer);
+    }catch(error:any){return res.status(500).json({error:error.message});}
   });
 
   // Projects list
@@ -351,6 +325,7 @@ export async function createApp() {
     const newProject: Project = {
       id: newProjectId,
       name: name || 'New MOCOF Renovation Project',
+      quotationType: req.body.quotationType,
       customerName: customerName || 'Valued Customer',
       customerPhone: customerPhone || '+60 12-000 0000',
       customerEmail: customerEmail || 'customer@example.com',
@@ -418,7 +393,7 @@ export async function createApp() {
         termsAndConditions: db.getConversionProfile().termsAndConditions, createdBy: 'Manager', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };
       const newProject: Project = {
-        id: newProjectId, name: input.name || 'New MOCOF Renovation Project', customerName: input.customerName || 'Valued Customer', customerPhone: input.customerPhone || '', customerEmail: input.customerEmail || '', projectAddress: input.projectAddress || '', quotationNumber: `MOC-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`, status: 'Processing', currency: input.currency || 'MYR', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), currentQuoteId: newQuoteId, totalMYRCents: 0,
+        id: newProjectId, name: input.name || 'New MOCOF Renovation Project', quotationType: input.quotationType, customerName: input.customerName || 'Valued Customer', customerPhone: input.customerPhone || '', customerEmail: input.customerEmail || '', projectAddress: input.projectAddress || '', quotationNumber: `MOC-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`, status: 'Processing', currency: input.currency || 'MYR', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), currentQuoteId: newQuoteId, totalMYRCents: 0,
       };
       db.createProject(newProject);
       db.saveQuote(newQuote);
@@ -588,6 +563,12 @@ export async function createApp() {
     }
 
     // Check pre-approval validation rules
+    if (quote.preservedTemplateWorkbook) {
+      return res.status(409).json({ error: 'Source-template financial reconciliation and structural recipe validation are not complete. This development draft cannot be approved as a customer quotation.' });
+    }
+    if (quote.documentedPromptExecutions?.some(step => step.status === 'needs_review' || step.status === 'partially_applied')) {
+      return res.status(409).json({ error: 'Area instructions still need review. This source-clone draft cannot be approved as a completed quotation.' });
+    }
     const exceptions = db.getExceptionsByQuoteId(quote.id);
     const unresolvedExceptions = exceptions.filter((e) => !e.resolved);
     if (unresolvedExceptions.length > 0) {
@@ -625,9 +606,7 @@ export async function createApp() {
       // Export the source-layout-preserving clone whenever the customer
       // supplied XLSX. The generated review grid is deliberately not used as
       // an XLSX export fallback in this path.
-      const xlsxBuffer = quote.preservedTemplateWorkbook?.transformedXlsxBase64
-        ? Buffer.from(quote.preservedTemplateWorkbook.transformedXlsxBase64, 'base64')
-        : await generateCustomerXlsx(quote, project, profile);
+      const xlsxBuffer = await exportTemplate(quote);
 
       quote.status = 'Exported';
       db.saveQuote(quote);
@@ -644,7 +623,7 @@ export async function createApp() {
       });
 
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="${quote.preservedTemplateWorkbook?.outputFileName || `MOCOF_Quotation_${project.quotationNumber}.xlsx`}"`);
+      res.setHeader('Content-Disposition', attachmentDisposition(quote.preservedTemplateWorkbook?.outputFileName || `MOCOF_Quotation_${project.quotationNumber}.xlsx`));
       res.send(xlsxBuffer);
     } catch (err: any) {
       console.error('XLSX export error:', err);
@@ -704,14 +683,12 @@ app.post('/api/exports/xlsx', async (req, res) => {
 
     const { quote, project } = payload;
     const profile = db.getConversionProfile();
-    const xlsxBuffer = quote.preservedTemplateWorkbook?.transformedXlsxBase64
-      ? Buffer.from(quote.preservedTemplateWorkbook.transformedXlsxBase64, 'base64')
-      : await generateCustomerXlsx(quote, project, profile);
+    const xlsxBuffer = await exportTemplate(quote);
     const fileName = quote.preservedTemplateWorkbook?.outputFileName
       || `MOCOF_Quotation_${project.quotationNumber || 'Customer_Quote'}.xlsx`;
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Disposition', attachmentDisposition(fileName));
     return res.send(xlsxBuffer);
   } catch (error: any) {
     console.error('Direct XLSX export error:', error);

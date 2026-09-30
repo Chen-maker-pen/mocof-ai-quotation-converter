@@ -12,6 +12,7 @@ export type ProjectStatus =
 export type CurrencyCode = 'MYR' | 'SGD' | 'USD' | 'CNY';
 
 export interface Project {
+  quotationType?: 'project' | 'residential';
   id: string;
   name: string;
   customerName: string;
@@ -204,11 +205,19 @@ export interface BossPromptCommand {
  * an explicit business decision, before exporting a quotation.
  */
 export interface DocumentedPromptExecution {
+  executor?: 'deterministic' | 'gemini';
   promptNumber: number;
   category: string;
   instruction: string;
-  status: 'applied' | 'partially_applied' | 'needs_review';
+  status: 'applied' | 'partially_applied' | 'needs_review' | 'skipped';
+  stepId?: string;
+  sourceLocations?: Array<{ id: string; location: string }>;
   result: string;
+  sourceDocument?: string;
+  changes?: Array<{ sheetName: string; address: string; before: string | number; after: string | number; formula?: string }>;
+  structuralChanges?: Array<{ sheetName: string; beforeRow: number; count: number }>;
+  columnCopies?: Array<{ sheetName: string; sourceColumn: string; targetColumn: string }>;
+  formatChanges?: Array<{ sheetName: string; range: string; numberFormat: string; fillColor?: string }>;
 }
 
 /** The unchanged initial customer workbook used when boss prompts are re-applied. */
@@ -234,6 +243,13 @@ export interface PreservedTemplateWorkbook {
   protectedMediaCount: number;
   protectedDrawingCount: number;
   protectedMergeCount: number;
+  /** Ordered journal, including structure edits. Addresses refer to that point in time. */
+  operations?: Array<{
+    kind?: 'replace_logo' | 'cell' | 'insert_rows' | 'copy_column' | 'format_cells'; sheetName: string; address?: string;
+    sourceColumn?: string; targetColumn?: string;
+    range?: string; numberFormat?: string; fillColor?: string;
+    value?: string | number; formula?: string; beforeRow?: number; count?: number; inheritHorizontalMerges?: boolean; promptNumber?: string;
+  }>;
   patches: Array<{
     sheetName: string;
     address: string;
@@ -244,6 +260,7 @@ export interface PreservedTemplateWorkbook {
 }
 
 export interface Quote {
+  conversionJobId?: string;
   id: string;
   projectId: string;
   versionNumber: number;

@@ -26,7 +26,7 @@ export interface ProjectDetailResponse {
 }
 
 export interface PersistentConversionJobResponse {
-  job: { id: string; status: 'queued' | 'processing' | 'completed' | 'failed'; createdAt: string; updatedAt: string; error?: string };
+  job: { id: string; status: 'queued' | 'processing' | 'completed' | 'failed'; createdAt: string; updatedAt: string; error?: string; progress?: { current: number; total: number; stepId: string; status: string } };
   result?: any;
 }
 

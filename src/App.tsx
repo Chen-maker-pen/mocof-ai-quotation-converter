@@ -31,11 +31,17 @@ export default function App() {
   const [profile, setProfile] = useState<ConversionProfile | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [conversionError, setConversionError] = useState<string | null>(null);
+  const [conversionProgress, setConversionProgress] = useState<string>('Waiting for the background worker');
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Initial Load
   useEffect(() => {
     loadProfile();
+    const lastJob = localStorage.getItem('mocof-last-job');
+    if (lastJob) {
+      setIsProcessing(true);
+      watchJob(lastJob).catch(err => setConversionError(err.message)).finally(() => setIsProcessing(false));
+    }
   }, []);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -89,11 +95,44 @@ export default function App() {
     }
   };
 
+  const watchJob = async (jobId: string) => {
+      const started = Date.now();
+      const maxWaitMs = 6 * 60 * 60 * 1000;
+      while (Date.now() - started < maxWaitMs) {
+        await new Promise((resolve) => window.setTimeout(resolve, 4_000));
+        const update = await api.getPersistentConversionJob(jobId);
+        setConversionProgress(update.job.progress
+          ? `Prompt ${update.job.progress.current} / ${update.job.progress.total} · ${update.job.progress.stepId} · ${update.job.progress.status.replaceAll('_', ' ')}`
+          : update.job.status === 'queued' ? 'Waiting for the background worker' : 'Reading the source workbook');
+        if (update.job.status === 'failed') {
+          throw new Error(update.job.error || 'Background conversion failed.');
+        }
+        if (update.job.status !== 'completed') continue;
+
+        const result = update.result;
+        if (!result?.project || !result?.quote) {
+          throw new Error('The background job finished but its customer quotation result is unavailable.');
+        }
+        setCurrentProject(result.project);
+        setCurrentQuote(result.quote);
+        setExceptions(result.exceptions || []);
+        setVersions([]);
+        showToast(result.quote.documentedPromptExecutions?.some((step: any) => step.status === 'needs_review') ? 'Prompt sequence finished. Some instructions need review; inspect the trace.' : 'Prompt sequence finished. Review the workbook before approval.');
+        // The normal workflow opens the editable customer quotation workbook
+        // immediately. Source/audit panels are not part of the customer editor.
+        setActiveTab('editor');
+        return;
+      }
+
+      throw new Error('Conversion is still running. Reopen this page to resume checking.');
+  };
+
   const handleProcessFile = async (file?: File, selectedArea?: number, details?: ConversionCustomerDetails) => {
     setIsProcessing(true);
     setConversionError(null);
+    setConversionProgress('Uploading the unchanged source workbook');
     try {
-      if (!file) throw new Error('Choose the original Chinese supplier .xlsx or .pdf file first.');
+      if (!file) throw new Error('Choose the original Chinese supplier .xlsx file first.');
       if (!selectedArea || selectedArea < 1 || selectedArea > 10) throw new Error('Choose the quotation Area (1–10) before conversion.');
       if (!details?.customerName || !details.customerAddress || !Number.isFinite(details.customerBudget) || details.customerBudget < 0 || !details.customerSqft || details.customerSqft <= 0) throw new Error('Enter customer name, address, budget and sqft before conversion.');
 
@@ -108,37 +147,14 @@ export default function App() {
         customerEmail: '',
         projectAddress: details.customerAddress,
         customerBudget: details.customerBudget,
+        quotationType: details.quotationType,
         currency: details.currency,
         selectedArea,
         customerSqft: details.customerSqft,
       });
 
-      const started = Date.now();
-      const maxWaitMs = 30 * 60 * 1000;
-      while (Date.now() - started < maxWaitMs) {
-        await new Promise((resolve) => window.setTimeout(resolve, 4_000));
-        const update = await api.getPersistentConversionJob(queued.job.id);
-        if (update.job.status === 'failed') {
-          throw new Error(update.job.error || 'Background conversion failed.');
-        }
-        if (update.job.status !== 'completed') continue;
-
-        const result = update.result;
-        if (!result?.project || !result?.quote) {
-          throw new Error('The background job finished but its customer quotation result is unavailable.');
-        }
-        setCurrentProject(result.project);
-        setCurrentQuote(result.quote);
-        setExceptions(result.exceptions || []);
-        setVersions([]);
-        showToast('Automatic conversion completed successfully!');
-        // The normal workflow opens the editable customer quotation workbook
-        // immediately. Source/audit panels are not part of the customer editor.
-        setActiveTab('editor');
-        return;
-      }
-
-      throw new Error('Conversion is still running. Keep this page open and try again shortly.');
+      localStorage.setItem('mocof-last-job', queued.job.id);
+      await watchJob(queued.job.id);
     } catch (err: any) {
       const message = err.message || 'Conversion failed';
       setConversionError(message);
@@ -208,7 +224,7 @@ export default function App() {
 
     try {
       showToast(`Preparing customer ${format.toUpperCase()} export...`);
-      const response = await fetch(`/api/exports/${format}`, {
+      const response = currentQuote.conversionJobId ? await fetch(`/api/conversion-jobs/${currentQuote.conversionJobId}/export/${format}`) : await fetch(`/api/exports/${format}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ quote: currentQuote, project: currentProject }),
@@ -312,6 +328,7 @@ export default function App() {
             onProcessFile={handleProcessFile}
             isProcessing={isProcessing}
             conversionError={conversionError}
+            conversionProgress={conversionProgress}
             currentProjectName={currentProject?.name}
             quotationNumber={currentProject?.quotationNumber}
           />
