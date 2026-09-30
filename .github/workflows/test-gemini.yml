@@ -44,6 +44,12 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Run regression checks
         if: inputs.verify_worker
+        env:
+          MOCOF_RECIPE_ASSETS_1: ${{ secrets.MOCOF_RECIPE_ASSETS_1 }}
+          MOCOF_RECIPE_ASSETS_2: ${{ secrets.MOCOF_RECIPE_ASSETS_2 }}
+          MOCOF_RECIPE_ASSETS_3: ${{ secrets.MOCOF_RECIPE_ASSETS_3 }}
+          MOCOF_RECIPE_ASSETS_4: ${{ secrets.MOCOF_RECIPE_ASSETS_4 }}
+          MOCOF_RECIPE_ASSETS_5: ${{ secrets.MOCOF_RECIPE_ASSETS_5 }}
         run: node --import tsx --test tests/*.test.ts
       - name: Verify worker with existing secrets
         if: inputs.verify_worker
