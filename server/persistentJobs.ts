@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { get, put } from '@vercel/blob';
 import { CurrencyCode, Project } from '../src/types.js';
+import type { RecipeCheckpoint, RecipeProgress } from './sequentialRecipe.js';
 
 export type ConversionJobStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
@@ -37,7 +38,9 @@ export interface PersistentConversionJob {
   completedAt?: string;
   resultBlobUrl?: string;
   convertedWorkbookBlobUrl?: string;
+  convertedPdfBlobUrl?: string;
   error?: string;
+  progress?: RecipeProgress;
 }
 
 export interface CompletedConversionResult {
@@ -77,6 +80,7 @@ function githubRepository() {
  */
 async function dispatchGitHubWorker(jobId: string) {
   const repository = githubRepository();
+  const ref = process.env.VERCEL_GIT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_REF || 'main';
   const response = await fetch(`https://api.github.com/repos/${repository}/dispatches`, {
     method: 'POST',
     headers: {
@@ -86,8 +90,7 @@ async function dispatchGitHubWorker(jobId: string) {
       'User-Agent': 'mocof-quotation-converter',
     },
     body: JSON.stringify({
-      event_type: 'mocof-conversion',
-      client_payload: { jobId },
+      event_type: 'mocof-conversion', client_payload: { jobId, ref },
     }),
   });
   if (!response.ok) {
@@ -109,8 +112,18 @@ async function writeJson(pathname: string, data: unknown) {
     access: 'private',
     contentType: 'application/json; charset=utf-8',
     allowOverwrite: true,
+    addRandomSuffix: false,
     cacheControlMaxAge: 60,
   });
+}
+
+export async function readRecipeCheckpoint(jobId: string) {
+  return readJson<RecipeCheckpoint>(`mocof/checkpoints/${jobId}.json`);
+}
+
+export async function saveRecipeCheckpoint(jobId: string, checkpoint: RecipeCheckpoint, progress: RecipeProgress) {
+  await writeJson(`mocof/checkpoints/${jobId}.json`, checkpoint);
+  await updatePersistentConversionJob(jobId, { progress });
 }
 
 export async function createPersistentConversionJob(
@@ -141,11 +154,17 @@ export async function createPersistentConversionJob(
   };
   await writeJson(jobPath(id), job);
 
-  const repository = await dispatchGitHubWorker(id);
+  // Persist dispatch metadata before dispatch: writing the queued snapshot
+  // afterwards can overwrite a worker that has already started/completed.
   job.githubDispatchAt = new Date().toISOString();
-  job.githubRepository = repository;
-  job.updatedAt = new Date().toISOString();
+  job.githubRepository = githubRepository();
   await writeJson(jobPath(id), job);
+  try {
+    await dispatchGitHubWorker(id);
+  } catch (error) {
+    await updatePersistentConversionJob(id, { status: 'failed', error: (error as Error).message });
+    throw error;
+  }
   return job;
 }
 
@@ -171,6 +190,7 @@ export async function persistCompletedConversion(
   jobId: string,
   result: CompletedConversionResult,
   transformedWorkbook?: { buffer: Buffer; outputFileName: string },
+  renderedPdf?: Buffer,
 ) {
   const resultBlob = await writeJson(resultPath(jobId), result);
   const converted = transformedWorkbook
@@ -178,9 +198,10 @@ export async function persistCompletedConversion(
       access: 'private', contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', cacheControlMaxAge: 60 * 60 * 24 * 365,
     })
     : undefined;
+  const pdf=renderedPdf ? await put(outputPath(jobId,'quotation.pdf'),renderedPdf,{access:'private',contentType:'application/pdf',cacheControlMaxAge:31536000}) : undefined;
   return updatePersistentConversionJob(jobId, {
     status: 'completed', completedAt: new Date().toISOString(), resultBlobUrl: resultBlob.url,
-    convertedWorkbookBlobUrl: converted?.url,
+    convertedWorkbookBlobUrl: converted?.url, convertedPdfBlobUrl: pdf?.url,
   });
 }
 
@@ -194,6 +215,35 @@ export function publicJobStatus(job: PersistentConversionJob) {
   return {
     id: job.id, status: job.status, createdAt: job.createdAt, updatedAt: job.updatedAt,
     attempt: job.attempt, workerStartedAt: job.workerStartedAt, completedAt: job.completedAt,
-    error: job.error,
+    error: job.error, progress: job.progress,
   };
+}
+
+export async function readJobExport(job:PersistentConversionJob,format:'xlsx'|'pdf') {
+ const url=format==='pdf'?job.convertedPdfBlobUrl:job.convertedWorkbookBlobUrl;
+ if(!url)throw Error('Requested export is not ready.');
+ const response=await get(url,{access:'private',useCache:false});
+ if(!response?.stream||response.statusCode!==200)throw Error('Export file is unavailable.');
+ return Buffer.from(await new Response(response.stream).arrayBuffer());
+}
+
+/** The review grid is enough for the browser; binary originals stay private. */
+export function browserConversionResult(result: CompletedConversionResult | null) {
+ if(!result)return null;
+ const quote = result.quote as import('../src/types.js').Quote;
+ return {...result, quote: {...quote, worksheets: [], promptRecipeBaseline: undefined,
+   preservedTemplateWorkbook: quote.preservedTemplateWorkbook ? {...quote.preservedTemplateWorkbook,transformedXlsxBase64: '', operations: [], patches: []} : undefined,
+ }};
+}
+
+export async function resumePersistentConversionJob(id:string) {
+ const job=await getPersistentConversionJob(id);
+ if(!job)throw Error('Saved job not found.');
+ if(job.status!=='failed')return job;
+ const checkpoint=await readRecipeCheckpoint(id);
+ if(checkpoint?.executions.some(e=>e.status==='needs_review'||e.status==='partially_applied'))throw Error('This job needs a prompt or source-data review before it can continue.');
+ await updatePersistentConversionJob(id,{status:'queued',error:undefined});
+ try { await dispatchGitHubWorker(id); }
+ catch(error){await updatePersistentConversionJob(id,{status:'failed',error:(error as Error).message});throw error;}
+ return (await getPersistentConversionJob(id))!;
 }

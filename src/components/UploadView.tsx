@@ -16,6 +16,7 @@ import {
 import { CurrencyCode } from '../types.js';
 
 export interface ConversionCustomerDetails {
+  quotationType: 'project' | 'residential';
   customerName: string;
   customerAddress: string;
   customerBudget: number;
@@ -26,7 +27,9 @@ export interface ConversionCustomerDetails {
 interface UploadViewProps {
   onProcessFile: (file?: File, selectedArea?: number, details?: ConversionCustomerDetails) => Promise<void>;
   isProcessing: boolean;
+  onResumeSavedJob?: () => Promise<void>;
   conversionError?: string | null;
+  conversionProgress?: string;
   currentProjectName?: string;
   quotationNumber?: string;
 }
@@ -39,33 +42,26 @@ const VERCEL_UPLOAD_SAFE_MAX_BYTES = 4 * 1024 * 1024;
 export const UploadView: React.FC<UploadViewProps> = ({
   onProcessFile,
   isProcessing,
+  onResumeSavedJob,
   conversionError,
+  conversionProgress,
   currentProjectName,
   quotationNumber,
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedArea, setSelectedArea] = useState<number | null>(null);
   const [customerName, setCustomerName] = useState('');
+  const [quotationType, setQuotationType] = useState<'project' | 'residential'>('project');
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerBudget, setCustomerBudget] = useState('');
   const [customerSqft, setCustomerSqft] = useState('');
   const [currency, setCurrency] = useState<CurrencyCode>('MYR');
   const [dragActive, setDragActive] = useState<boolean>(false);
-  const [activeStep, setActiveStep] = useState<number>(0);
-
-  const processingSteps = [
-    { label: 'Reading Chinese XLSX worksheets or PDF quotation pages', icon: FileSpreadsheet },
-    { label: 'Extracting Embedded Product Photos & Drawing Anchors', icon: Layers },
-    { label: 'Applying AI Gemini Terminology & Mappings Profile', icon: Sparkles },
-    { label: 'Executing Deterministic Integer Price & Exchange Calculations', icon: Zap },
-    { label: 'Scanning Exception Flags & Whole-House Total Reconciliation', icon: ShieldCheck },
-  ];
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       if (file.size > VERCEL_UPLOAD_SAFE_MAX_BYTES) {
-        alert('This file is larger than 4 MB. Vercel rejects uploads above 4.5 MB. Please export a smaller XLSX/PDF or use the local version of MOCOF for this file.');
+        alert('This file is larger than 4 MB. Vercel rejects uploads above 4.5 MB. Please export a smaller XLSX or use the local version of MOCOF for this file.');
         e.target.value = '';
         return;
       }
@@ -88,7 +84,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
       if (file.size > VERCEL_UPLOAD_SAFE_MAX_BYTES) {
-        alert('This file is larger than 4 MB. Vercel rejects uploads above 4.5 MB. Please export a smaller XLSX/PDF or use the local version of MOCOF for this file.');
+        alert('This file is larger than 4 MB. Vercel rejects uploads above 4.5 MB. Please export a smaller XLSX or use the local version of MOCOF for this file.');
         return;
       }
       setSelectedFile(file);
@@ -110,14 +106,9 @@ export const UploadView: React.FC<UploadViewProps> = ({
       alert('Enter the customer sqft before conversion. It is required to calculate Supplementary Before Price and After Price.');
       return;
     }
-    // Simulate step progress visual feedback
-    setActiveStep(1);
-    const interval = setInterval(() => {
-      setActiveStep((prev) => (prev < 5 ? prev + 1 : prev));
-    }, 700);
-
     try {
       await onProcessFile(fileToUse || selectedFile || undefined, selectedArea || undefined, {
+        quotationType,
         customerName: customerName.trim(),
         customerAddress: customerAddress.trim(),
         customerBudget: budget,
@@ -125,8 +116,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
         currency,
       });
     } finally {
-      clearInterval(interval);
-      setActiveStep(5);
+      // Progress is reported by the worker, never simulated with timers.
     }
   };
 
@@ -142,7 +132,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
         </div>
         <h2 className="text-2xl font-extrabold tracking-tight">Create a customer-ready quotation</h2>
         <p className="text-xs text-slate-200 font-normal leading-relaxed">
-          Enter the customer details, choose the Area recipe, then upload the Chinese supplier workbook (.xlsx) or quotation PDF.
+          Enter the customer details, choose the Area recipe, then upload the Chinese supplier workbook (.xlsx).
         </p>
       </div>
 
@@ -167,6 +157,12 @@ export const UploadView: React.FC<UploadViewProps> = ({
             </select>
           </label>
         </div>
+        <label className="mt-3 block text-xs font-bold text-slate-700">Quotation type
+          <select value={quotationType} onChange={event => setQuotationType(event.target.value as 'project' | 'residential')} className="mt-1.5 block rounded-lg border border-slate-300 px-3 py-2">
+            <option value="project">Project — no design fee deduction</option>
+            <option value="residential">Residential — apply Area design fee rules</option>
+          </select>
+        </label>
         <label htmlFor="customer-sqft" className="mt-3 block text-xs font-bold text-slate-700">Customer home sqft
           <input id="customer-sqft" type="number" min="1" step="0.01" inputMode="decimal" value={customerSqft} onChange={(event) => setCustomerSqft(event.target.value)} placeholder="Enter customer sqft" className="mt-1.5 w-full max-w-sm rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-[#183b6b] focus:ring-2 focus:ring-[#183b6b]/15" />
         </label>
@@ -221,7 +217,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
               {selectedFile ? selectedFile.name : 'Upload Chinese Supplier Quotation File'}
             </h3>
             <p className="text-xs text-slate-500 mt-1">
-              Upload the original supplier workbook (.xlsx) or quotation PDF (up to 4 MB on the web app). XLSX product photos are preserved; PDF items are extracted by Gemini and flagged if a source image is unavailable.
+              Upload the original supplier workbook (.xlsx, up to 4 MB). Its sheets, product photos and layout are preserved. PDF is available as an output.
             </p>
           </div>
 
@@ -231,7 +227,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
                 Browse File
                 <input
                   type="file"
-                  accept=".xlsx,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                   onChange={handleFileChange}
                   className="hidden"
                 />
@@ -243,7 +239,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
                 className="inline-flex items-center px-5 py-2.5 bg-[#0b1f3a] hover:bg-[#183b6b] text-white text-xs font-semibold rounded-lg shadow-sm shadow-black/20 transition-colors"
               >
                 <Sparkles className="w-4 h-4 mr-1.5 text-white" />
-                {!selectedFile ? 'Choose an XLSX or PDF file first' : !customerName.trim() || !customerAddress.trim() || !(Number(customerBudget) >= 0) || !(Number(customerSqft) > 0) ? 'Enter customer details first' : !selectedArea ? 'Choose Area 1–10 first' : `Run Area ${selectedArea} Recipe`}
+                {!selectedFile ? 'Choose an XLSX file first' : !customerName.trim() || !customerAddress.trim() || !(Number(customerBudget) >= 0) || !(Number(customerSqft) > 0) ? 'Enter customer details first' : !selectedArea ? 'Choose Area 1–10 first' : `Run Area ${selectedArea} Recipe`}
               </button>
             </div>
           )}
@@ -255,13 +251,14 @@ export const UploadView: React.FC<UploadViewProps> = ({
           <p className="text-sm font-bold text-red-900">Conversion did not complete</p>
           <p className="mt-1 break-words text-sm leading-6 text-red-800">{conversionError}</p>
           <p className="mt-2 text-xs leading-5 text-red-700">
-            Tip: on Vercel, use an .xlsx or PDF below 4 MB. If this message mentions Gemini, check that
+            Tip: on Vercel, use an .xlsx below 4 MB. If this message mentions Gemini, check that
             <code className="mx-1 rounded bg-red-100 px-1">GEMINI_API_KEY</code> is saved for Production and redeploy once.
           </p>
         </div>
       )}
 
-      {!isProcessing && <p className="text-center text-xs text-slate-500">Step 3: the selected Area recipe converts the quotation. Then review, edit if needed, and export PDF or Excel.</p>}
+      {!isProcessing && conversionError && onResumeSavedJob && <button onClick={onResumeSavedJob} className="rounded bg-blue-800 px-4 py-2 text-white">Resume saved job (after quota resets if limited)</button>}
+      {!isProcessing && <p className="text-center text-xs text-slate-500">Step 3: the selected Area recipe converts the quotation. Then review and download PDF or Excel.</p>}
 
       {/* Real-Time Processing Progress Panel */}
       {isProcessing && (
@@ -270,7 +267,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
             <Loader2 className="w-6 h-6 text-emerald-600 animate-spin" />
             <div>
               <h3 className="text-base font-extrabold text-slate-900">
-                Converting Quotation to MOCOF English Format...
+                Applying prompts to the original workbook...
               </h3>
               <p className="text-xs text-slate-500 font-medium">
                 AI and server deterministic rules engine operating in real-time
@@ -278,33 +275,9 @@ export const UploadView: React.FC<UploadViewProps> = ({
             </div>
           </div>
 
-          <div className="space-y-2.5 pt-2 border-t border-slate-100">
-            {processingSteps.map((step, idx) => {
-              const StepIcon = step.icon;
-              const isDone = activeStep > idx + 1;
-              const isCurrent = activeStep === idx + 1;
-
-              return (
-                <div
-                  key={idx}
-                  className={`flex items-center justify-between p-3 rounded-lg border text-xs font-semibold transition-all ${
-                    isDone
-                      ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
-                      : isCurrent
-                      ? 'bg-amber-50/80 border-amber-300 text-amber-950 shadow-xs'
-                      : 'bg-slate-50 border-slate-200 text-slate-400'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3">
-                    <StepIcon className="w-4 h-4" />
-                    <span>{step.label}</span>
-                  </div>
-
-                  {isDone && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
-                  {isCurrent && <Loader2 className="w-4 h-4 animate-spin text-amber-600" />}
-                </div>
-              );
-            })}
+          <div role="status" aria-live="polite" className="border-t border-slate-100 pt-3 text-sm text-slate-700">
+            {conversionProgress || 'Waiting for the background worker'}
+            <p className="mt-2 text-xs text-slate-500">Each prompt runs in document order. Longer processing is expected; completed steps are checkpointed.</p>
           </div>
         </div>
       )}

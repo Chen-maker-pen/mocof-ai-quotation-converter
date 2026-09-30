@@ -6,14 +6,14 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { ConversionProfile, QuoteItem, ExceptionItem } from '../src/types.js';
 import { getDocumentedAreaPrompts } from './documentedPrompts.js';
+import { getGeminiModel, geminiFailure, requireExtractionItems } from './geminiConfig.js';
 
 let aiClient: GoogleGenAI | null = null;
 
-// Vercel Hobby functions have a short request ceiling.  Keep a generous
-// margin for Excel parsing and workbook generation, then complete through the
-// deterministic documented-rule path if Gemini is slow or temporarily busy.
-const GEMINI_REQUEST_TIMEOUT_MS = 30_000;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// Long-running workers can wait/retry. Synchronous requests keep their short
+// ceiling, but neither path may report a failed AI request as successful.
+const GEMINI_REQUEST_TIMEOUT_MS = process.env.MOCOF_BACKGROUND_WORKER === 'true' ? 180_000 : 30_000;
+const GEMINI_MODEL = getGeminiModel();
 
 function getGeminiClient(): GoogleGenAI | null {
   if (!aiClient && process.env.GEMINI_API_KEY) {
@@ -24,9 +24,8 @@ function getGeminiClient(): GoogleGenAI | null {
           'User-Agent': 'aistudio-build',
         },
         timeout: GEMINI_REQUEST_TIMEOUT_MS,
-        // A retry can exceed Vercel's runtime ceiling. One attempt lets the
-        // normal XLSX fallback finish the customer quotation reliably.
-        retryOptions: { attempts: 1 },
+        // Retries are reserved for the long-running worker.
+        retryOptions: { attempts: process.env.MOCOF_BACKGROUND_WORKER === 'true' ? 3 : 1 },
       },
     });
   }
@@ -266,8 +265,7 @@ export async function processAiExtractionAndConversion(
   const ai = getGeminiClient();
 
   if (!ai) {
-    console.warn('GEMINI_API_KEY missing or client not initialized. Falling back to rule-based deterministic mapping.');
-    return fallbackRuleBasedMapping(rawChineseRows, profile);
+    throw new Error('GEMINI_API_KEY is required for the requested AI conversion.');
   }
 
   try {
@@ -347,9 +345,9 @@ export async function processAiExtractionAndConversion(
       },
     });
 
-    if (response.text) {
-      const parsed = JSON.parse(response.text.trim());
-      if (parsed && Array.isArray(parsed.items)) {
+    {
+      const parsed = requireExtractionItems(response.text);
+      {
         const translatedItems: Partial<QuoteItem>[] = parsed.items.map((it: any) => ({
           sourceRowIndex: it.sourceRowIndex || 1,
           itemCode: it.itemCode || 'MC-ITEM-01',
@@ -380,10 +378,8 @@ export async function processAiExtractionAndConversion(
       }
     }
   } catch (err) {
-    console.error('Gemini API extraction error:', err);
+    throw geminiFailure(err);
   }
-
-  return fallbackRuleBasedMapping(rawChineseRows, profile);
 }
 
 function fallbackRuleBasedMapping(

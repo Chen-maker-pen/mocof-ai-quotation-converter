@@ -30,7 +30,7 @@ import {
   RotateCcw,
   TableProperties,
 } from 'lucide-react';
-import { evaluateWorkbookCell } from '../lib/formulaEvaluator';
+import { evaluateWorkbookValue } from '../lib/formulaEvaluator';
 import { api } from '../services/api.js';
 
 const WHOLE_HOUSE_SERVICE_ROWS = ['Extra m²', 'Curve', 'Wall Panel', 'Aluminium Frame', 'Add-on finishing', 'Wall bed', 'Pull out mechanism', 'Sliding Door', 'Hidden Door', 'Folding Door', 'Partition at foyer', 'Staircase store room', 'Window', 'Grill door', 'Special off'];
@@ -360,7 +360,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
 
   const updateGridCell = (address: string, value: string) => {
     const updated = JSON.parse(JSON.stringify(editedQuote)) as Quote;
-    const sheet = updated.workbookSheets?.[0];
+    const sheet = updated.workbookSheets?.[activeSheetIndex - 1];
     const cell = sheet?.cells[address];
     if (!cell) return;
     cell.value = value;
@@ -371,13 +371,13 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
     setEditedQuote(updated);
   };
 
-  const gridSheet = editedQuote.workbookSheets?.[0];
+  const gridSheet = editedQuote.workbookSheets?.[activeSheetIndex - 1];
   const gridCells = gridSheet ? Object.values(gridSheet.cells) as Array<{ row: number; column: number; value: unknown }> : [];
-  const gridLastRow = gridSheet ? Math.min(Math.max(...gridCells.map((cell) => cell.row), 40), 260) : 0;
+  const gridLastRow = gridSheet ? Math.max(...gridCells.map((cell) => cell.row), 40) : 0;
   const gridColumns = gridSheet ? Array.from({ length: gridSheet.columnCount }, (_, index) => String.fromCharCode(65 + index)) : [];
   const gridNumber = (cellAddress: string, fallback = 0) => {
     if (!gridSheet?.cells[cellAddress]) return fallback;
-    const value = evaluateWorkbookCell(gridSheet, cellAddress);
+    const value = evaluateWorkbookValue(gridSheet, cellAddress, editedQuote.workbookSheets);
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : fallback;
   };
@@ -459,6 +459,11 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
 
   return (
     <div className="space-y-4">
+      {editedQuote.preservedTemplateWorkbook && editedQuote.documentedPromptExecutions?.some(step => step.status === 'needs_review' || step.status === 'partially_applied') && (
+        <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          Source-clone draft — the Area prompts have been processed in order; unresolved instructions are listed in the trace. Prices are not validated. XLSX export retains the source template. PDF and custom prompt execution await verified mapping.
+        </div>
+      )}
       {/* Header Toolbar */}
       <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -474,7 +479,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             )}
           </div>
           <p className="text-xs text-slate-500 mt-0.5 font-medium">
-            One full editable quotation workbook. Select a sheet tab, edit cells, then export the saved customer version.
+            {editedQuote.conversionJobId ? 'Completed workbook. Inspect the prompt trace and download the saved Excel or PDF.' : 'Select a sheet tab, edit cells, then export the saved customer version.'}
           </p>
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-slate-700">
             <span>Customer: {project.customerName || '—'}</span>
@@ -489,7 +494,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
           {/* Lock Exchange Rate button */}
           <button
             onClick={() => onLockExchangeRate(managerName)}
-            disabled={editedQuote.exchangeRate.isLocked}
+            disabled={editedQuote.exchangeRate.isLocked || Boolean(editedQuote.preservedTemplateWorkbook)}
             className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-colors inline-flex items-center ${
               editedQuote.exchangeRate.isLocked
                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
@@ -520,17 +525,19 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
           </button>
 
           <button
+            disabled={Boolean(editedQuote.preservedTemplateWorkbook)}
+            title={editedQuote.preservedTemplateWorkbook ? 'Source workbook grid is authoritative; legacy detail forms are unavailable for this draft.' : undefined}
             onClick={() => setWorkbookMode(workbookMode === 'grid' ? 'details' : 'grid')}
             className="px-3 py-2 bg-slate-900 hover:bg-black text-white text-xs font-semibold rounded-lg transition-colors inline-flex items-center"
           >
             <TableProperties className="w-3.5 h-3.5 mr-1.5" />
-            {workbookMode === 'grid' ? 'Show Detail Forms' : 'Show Sheet Grid'}
+            {editedQuote.preservedTemplateWorkbook ? 'Source Workbook' : workbookMode === 'grid' ? 'Show Detail Forms' : 'Show Sheet Grid'}
           </button>
 
           {/* Save Version button */}
           <button
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || Boolean(editedQuote.conversionJobId)}
             className="px-4 py-2 bg-[#7787c6] hover:bg-[#6878b7] text-white text-xs font-semibold rounded-lg shadow-xs transition-colors inline-flex items-center"
           >
             <Save className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
@@ -538,6 +545,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
           </button>
 
           {/* Export Actions */}
+          {editedQuote.conversionJobId ? <a href={`/api/conversion-jobs/${editedQuote.conversionJobId}/export/xlsx`} download className="px-3 py-2 bg-[#5f6faf] text-white text-xs font-semibold rounded-lg">Export XLSX</a> : (
           <button
             onClick={onExportXlsx}
             className="px-3 py-2 bg-[#5f6faf] hover:bg-[#323970] text-white text-xs font-semibold rounded-lg shadow-xs transition-colors inline-flex items-center"
@@ -545,7 +553,9 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" />
             Export XLSX
           </button>
+          )}
 
+          {editedQuote.conversionJobId ? <a href={`/api/conversion-jobs/${editedQuote.conversionJobId}/export/pdf`} download className="px-3 py-2 bg-[#5f6faf] text-white text-xs font-semibold rounded-lg">Export PDF</a> : (
           <button
             onClick={onExportPdf}
             className="px-3 py-2 bg-[#a6b5de] hover:bg-[#7787c6] text-[#323970] text-xs font-semibold rounded-lg shadow-xs transition-colors inline-flex items-center"
@@ -553,12 +563,13 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             <FileText className="w-3.5 h-3.5 mr-1.5" />
             Export PDF
           </button>
+          )}
         </div>
       </div>
 
       {/* Google-Sheet-style worksheet tabs */}
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs p-2 flex items-center space-x-1 overflow-x-auto text-xs">
-        {editedQuote.worksheets.map((tab) => (
+        {(editedQuote.preservedTemplateWorkbook ? (editedQuote.workbookSheets || []).map((s, i) => ({ worksheetIndex: i + 1, name: s.name })) : editedQuote.worksheets).map((tab) => (
           <button
             key={tab.worksheetIndex}
             onClick={() => setActiveSheetIndex(tab.worksheetIndex)}
@@ -583,7 +594,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
               <div>
                 <h3 className="font-extrabold text-base text-slate-900">{gridSheet.name} — spreadsheet grid</h3>
-                <p className="text-xs text-slate-500 mt-1">Direct cell editing is enabled. Column letters and row numbers match the quotation prompt document.</p>
+                <p className="text-xs text-slate-500 mt-1">{editedQuote.conversionJobId ? 'Saved worker result. Download Excel or PDF below; upload again to change conversion inputs.' : 'Direct cell editing is enabled. Column letters and row numbers match the quotation prompt document.'}</p>
               </div>
               <span className="font-mono text-xs rounded bg-slate-100 px-2 py-1">Selected: {selectedCell}</span>
             </div>
@@ -607,7 +618,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
                         const isHeader = cell?.kind === 'header';
                         const isTotal = cell?.kind === 'total';
                         return <td key={cellAddress} className={`border border-slate-200 p-0 align-middle ${isTitle ? 'bg-[#0b1f3a] text-white font-bold' : isHeader ? 'bg-slate-200 font-bold' : isTotal ? 'bg-blue-50 font-bold text-red-600' : ''}`}>
-                          {cell ? <input aria-label={cellAddress} title={cell.formula ? `Formula: =${cell.formula}` : undefined} value={cell.formula ? (evaluateWorkbookCell(gridSheet, cellAddress) ?? '') : cell.value} onFocus={() => setSelectedCell(cellAddress)} onChange={(event) => updateGridCell(cellAddress, event.target.value)} className={`h-8 w-full min-w-0 border-0 bg-transparent px-2 outline-none focus:bg-amber-50 focus:ring-2 focus:ring-inset focus:ring-blue-500 ${isTitle ? 'text-white' : ''} ${columnIndex >= 5 ? 'font-mono text-right' : ''}`} /> : <button aria-label={`Select ${cellAddress}`} onClick={() => setSelectedCell(cellAddress)} className="h-8 w-full text-left hover:bg-blue-50" />}
+                          {cell ? <input readOnly={Boolean(editedQuote.conversionJobId)} aria-label={cellAddress} title={cell.formula ? `Formula: =${cell.formula}` : undefined} value={cell.formula ? (evaluateWorkbookValue(gridSheet, cellAddress, editedQuote.workbookSheets) ?? 'Needs review') : cell.value} onFocus={() => setSelectedCell(cellAddress)} onChange={(event) => updateGridCell(cellAddress, event.target.value)} className={`h-8 w-full min-w-0 border-0 bg-transparent px-2 outline-none focus:bg-amber-50 focus:ring-2 focus:ring-inset focus:ring-blue-500 ${isTitle ? 'text-white' : ''} ${columnIndex >= 5 ? 'font-mono text-right' : ''}`} /> : <button aria-label={`Select ${cellAddress}`} onClick={() => setSelectedCell(cellAddress)} className="h-8 w-full text-left hover:bg-blue-50" />}
                         </td>;
                       })}
                     </tr>
@@ -615,7 +626,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
                 </tbody>
               </table>
             </div>
-            <p className="text-[11px] text-slate-500">Formula cells show their exact formulas. If you type in one, it becomes a manual override—exactly like Google Sheets. Save Draft Version stores these cell changes.</p>
+            <p className="text-[11px] text-slate-500">{editedQuote.conversionJobId ? 'Select a cell to inspect its formula. Downloads use this saved workbook.' : 'Select a cell to inspect its formula. Save Draft Version stores local cell edits.'}</p>
           </div>
         ) : null}
 
@@ -992,7 +1003,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
               <button onClick={() => deleteBossPrompt(command.id)} className="mt-1 p-1.5 text-red-500 hover:bg-red-50 rounded" title="Delete prompt"><Trash2 className="w-4 h-4" /></button>
             </div>
           ))}
-          <button onClick={applyBossPrompts} className="w-full px-3 py-2 bg-[#5f6faf] hover:bg-[#4e5d99] text-white rounded-lg text-xs font-extrabold inline-flex items-center justify-center"><RotateCcw className="w-3.5 h-3.5 mr-1.5" />Apply Prompts to Table</button>
+          <button disabled={Boolean(editedQuote.preservedTemplateWorkbook)} title="Custom prompt execution requires validated source-cell mapping" onClick={applyBossPrompts} className="w-full px-3 py-2 bg-[#5f6faf] hover:bg-[#4e5d99] text-white rounded-lg text-xs font-extrabold inline-flex items-center justify-center"><RotateCcw className="w-3.5 h-3.5 mr-1.5" />Apply Prompts to Table</button>
           {(editedQuote.bossPromptCommands || []).some((command) => command.status) && (
             <div className="border-t border-slate-200 pt-2 space-y-1.5">
               <h5 className="text-[10px] uppercase tracking-wide font-extrabold text-slate-600">Applied Prompt Transactions</h5>
@@ -1016,17 +1027,25 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
             </div>
           )}
           <div className="p-3 bg-slate-50 flex items-center justify-between"><span className="text-[11px] uppercase tracking-wide font-extrabold text-slate-700">Area Document Audit</span><span className="text-[10px] text-slate-500">Read-only base</span></div>
-          {(editedQuote.promptTrace || []).map((prompt, index) => (
-            <div key={`${index}-${prompt.slice(0, 20)}`} className="p-3">
-              <div className="text-[10px] uppercase tracking-wide font-bold text-emerald-700 mb-1">
-                {index === 0 ? 'Analysis' : index === 1 ? 'Selected quotation document' : `Quotation document prompt ${String(index - 1).padStart(2, '0')}`}
-              </div>
-              {editedQuote.documentedPromptExecutions?.[index - 2] && (
-                <div className={`mb-2 rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${editedQuote.documentedPromptExecutions[index - 2].status === 'applied' ? 'bg-emerald-50 text-emerald-800' : editedQuote.documentedPromptExecutions[index - 2].status === 'partially_applied' ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
-                  {editedQuote.documentedPromptExecutions[index - 2].status.replace('_', ' ')} — {editedQuote.documentedPromptExecutions[index - 2].result}
-                </div>
-              )}
-              <p className="text-xs leading-5 text-slate-700 whitespace-pre-wrap">{prompt}</p>
+          {(editedQuote.documentedPromptExecutions || []).map((execution) => (
+            <div key={execution.promptNumber} className="p-3 space-y-2">
+              <div className="text-xs font-bold">Prompt {execution.promptNumber} — {execution.status.replaceAll('_', ' ')}</div>
+              <div className="text-xs text-slate-500">{execution.sourceDocument} · {execution.sourceLocations?.[0]?.location} · {execution.stepId || execution.category}</div>
+              <p className="text-xs whitespace-pre-wrap">{execution.instruction}</p>
+              <p className="text-xs text-amber-800">{execution.result}</p>
+              {execution.structuralChanges?.map((change, index) => <div key={`rows-${index}`} className="text-xs border-t pt-1">
+                {change.sheetName}: inserted {change.count} rows before row {change.beforeRow}; source cells and image anchors moved together.
+              </div>)}
+              {execution.columnCopies?.map((change, index) => <div key={`column-${index}`} className="text-xs border-t pt-1">
+                {change.sheetName}: copied column {change.sourceColumn} to {change.targetColumn}, including cell styles and vertical merges.
+              </div>)}
+              {execution.formatChanges?.map((change, index) => <div key={`format-${index}`} className="text-xs border-t pt-1">
+                {change.sheetName}!{change.range}: number format <code>{change.numberFormat}</code>
+              </div>)}
+              {execution.changes?.map((change, index) => <div key={index} className="text-xs border-t pt-1">
+                {change.sheetName}!{change.address}: {String(change.before)} → {String(change.after)}
+                {change.formula && <code> ={change.formula}</code>}
+              </div>)}
             </div>
           ))}
           {(!editedQuote.promptTrace || editedQuote.promptTrace.length === 0) && (

@@ -6,6 +6,7 @@
  * Gemini translation/recipe steps, and workbook preservation safely.
  */
 import 'dotenv/config';
+import {generateCustomerPdf} from '../server/exporter.js';
 
 import { db } from '../server/db.js';
 import { createRateSnapshot } from '../server/exchange.js';
@@ -15,6 +16,8 @@ import {
   persistCompletedConversion,
   readSourceForWorker,
   updatePersistentConversionJob,
+  readRecipeCheckpoint,
+  saveRecipeCheckpoint,
 } from '../server/persistentJobs.js';
 import { Project, Quote } from '../src/types.js';
 
@@ -48,6 +51,7 @@ function createInitialProjectAndQuote(input: Record<string, unknown>) {
   const project: Project = {
     id: projectId,
     name: String(input.name || 'New MOCOF Renovation Project'),
+    quotationType: input.quotationType === 'project' || input.quotationType === 'residential' ? input.quotationType : undefined,
     customerName: String(input.customerName || 'Valued Customer'),
     customerPhone: String(input.customerPhone || ''),
     customerEmail: String(input.customerEmail || ''),
@@ -100,30 +104,38 @@ async function main() {
       Number(job.input.projectData.selectedArea),
       Number(job.input.projectData.customerSqft),
       Number(job.input.projectData.customerBudget),
+      {
+        resume: await readRecipeCheckpoint(jobId) || undefined,
+        checkpoint: (checkpoint, progress) => saveRecipeCheckpoint(jobId, checkpoint, progress),
+        progress: async (progress) => { await updatePersistentConversionJob(jobId, { progress }); },
+      },
     );
+    if(result.quote.documentedPromptExecutions?.some(e=>e.status==='needs_review'))throw Error('One or more prompt instructions need review; inspect the saved checkpoint.');
+    result.quote.conversionJobId=jobId;
+    const pdf=await generateCustomerPdf(result.quote,result.project,db.getConversionProfile());
     const output = result.quote?.preservedTemplateWorkbook;
     await persistCompletedConversion(jobId, result, output?.transformedXlsxBase64
       ? {
           buffer: Buffer.from(output.transformedXlsxBase64, 'base64'),
           outputFileName: output.outputFileName || `MOCOF_Quotation_${project.quotationNumber}.xlsx`,
         }
-      : undefined);
+      : undefined,pdf);
     console.log(`MOCOF conversion completed: ${jobId}`);
   } catch (error: any) {
     const message = error?.message || 'Background conversion failed.';
-    console.error(`MOCOF conversion failed for ${jobId}: ${message}`);
+    console.error(`MOCOF conversion failed for ${jobId}; details are in the private job record.`);
     try {
       await updatePersistentConversionJob(jobId, { status: 'failed', error: message });
     } catch (persistError) {
       // When the storage credential itself is invalid, preserving failure state
       // is impossible. Keep the original error visible in the Actions log.
-      console.error('Could not persist failed conversion status:', persistError);
+      console.error('Could not persist failed conversion status.');
     }
     throw error;
   }
 }
 
 main().catch((error) => {
-  console.error(error);
+  console.error('Worker stopped without publishing an incomplete quotation.');
   process.exitCode = 1;
 });
