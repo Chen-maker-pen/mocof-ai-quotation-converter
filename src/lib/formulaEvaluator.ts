@@ -1,1 +1,1 @@
-export { evaluateExcelNumber as evaluateWorkbookCell, evaluateExcelValue as evaluateWorkbookValue } from "./excelFormula";
+export { evaluateExcelNumber as evaluateWorkbookCell, evaluateExcelValue as evaluateWorkbookValue } from "./excelFormula.js";
