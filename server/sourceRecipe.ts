@@ -1,3 +1,6 @@
+import {correctArea3} from './area3Corrections.js';
+import {readTemplateWorkbook} from './templateWorkbook.js';
+import {createHash} from 'node:crypto';
 import { executeSequentialRecipe, type RecipeCustomer } from "./sequentialRecipe.js";
 import { planHybridStep } from "./hybridStepPlanner.js";
 export const approvedArea3Decisions = [
@@ -11,5 +14,11 @@ export const approvedArea3Decisions = [
 ];
 export type SourceRecipeOptions = Partial<Parameters<typeof executeSequentialRecipe>[4]>;
 export async function runSourceRecipe(raw: Buffer, filename: string, area: number, customer: RecipeCustomer, options: SourceRecipeOptions = {}) {
-  return executeSequentialRecipe(raw, filename, area, customer, { ...options, userDecisions: options.userDecisions || (area===3 ? approvedArea3Decisions : []), planner: options.planner || planHybridStep });
+  const result=await executeSequentialRecipe(raw, filename, area, customer, { ...options, userDecisions: options.userDecisions || (area===3 ? approvedArea3Decisions : []), planner: options.planner || planHybridStep });
+  if(area===3 && result.executions.every(e=>e.status==='applied'||e.status==='skipped')){
+    const bytes=await correctArea3(Buffer.from(result.preserved.transformedXlsxBase64,'base64'),filename);
+    result.preserved.transformedXlsxBase64=bytes.toString('base64');result.preserved.transformedSha256=createHash('sha256').update(bytes).digest('hex');
+    result.workbookSheets=await readTemplateWorkbook(bytes);
+  }
+  return result;
 }
