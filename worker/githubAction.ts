@@ -110,7 +110,8 @@ async function main() {
         progress: async (progress) => { await updatePersistentConversionJob(jobId, { progress }); },
       },
     );
-    if(result.quote.documentedPromptExecutions?.some(e=>e.status==='needs_review'))throw Error('One or more prompt instructions need review; inspect the saved checkpoint.');
+    const unresolved=result.quote.documentedPromptExecutions?.find(e=>e.status==='needs_review');
+    if(unresolved)throw Error(unresolved.result || 'One or more prompt instructions need review.');
     result.quote.conversionJobId=jobId;
     const pdf=await generateCustomerPdf(result.quote,result.project,db.getConversionProfile());
     const output = result.quote?.preservedTemplateWorkbook;
