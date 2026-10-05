@@ -194,12 +194,12 @@ export function createHybridStepPlanner(fallback: StepPlanner = planGeminiStep):
   return async context => {
     const compiled = planDeterministicStep(context);
     if (compiled) return compiled;
+    const unresolved = context.history.filter(e=>e.status==='needs_review');
+    if (unresolved.length) return {stepId:context.step.id,status:'needs_review',reason:'Earlier instruction is unresolved; Gemini was not called for this dependent step.',operations:[],blockedBy:unresolved.map(e=>e.stepId!).filter(Boolean),executor:'deterministic'};
     if(context.recipe.area===3){
       const reason=context.recipe.sourceSha256!==AREA3_HASH?'The installed Area 3 recipe does not match the reviewed version.':context.step.id==='A3-S011'&&context.customer.quotationType!=='project'?'This reviewed Area 3 release requires Project quotation type. Residential rules have not been validated.':'The source layout or required review decisions do not match the compiled Area 3 rule.';
       return {stepId:context.step.id,status:'needs_review',reason:`${context.step.id}: ${reason} No Gemini request was made.`,operations:[],executor:'deterministic'};
     }
-    const unresolved = context.history.filter(e=>e.status==='needs_review');
-    if (unresolved.length) return {stepId:context.step.id,status:'needs_review',reason:'Earlier instruction is unresolved; Gemini was not called for this dependent step.',operations:[],blockedBy:unresolved.map(e=>e.stepId!).filter(Boolean),executor:'deterministic'};
     const effective = context.customer.quotationType === 'project' ? {...context,userDecisions:[...(context.userDecisions || []),'This is a Project quotation. Do not deduct any design fee, regardless of sqft. Preserve row positions.']} : context;
     return {...await fallback(effective),executor:'gemini'};
   };
