@@ -30,6 +30,7 @@ export async function replaceTemplateLogo(zip:JSZip,sheetFile:string):Promise<Se
 /** Formatting of the new quotation blocks; existing product geometry is untouched. */
 export async function finishQuotationLayout(zip:JSZip,sheetFile:string):Promise<Set<string>> {
  let xml=await zip.file(sheetFile)!.async('string');
+ const area2=/<c\b[^>]*\br="A17"[^>]*>[\s\S]*?<t[^>]*>Supplementary<\/t>[\s\S]*?<\/c>/.test(xml);
  let styles=await zip.file('xl/styles.xml')!.async('string');
  const get=(s:string,n:string)=>new RegExp(`\\b${n}="([^"]*)"`).exec(s)?.[1];
  const put=(s:string,n:string,v:string)=>new RegExp(`\\b${n}="[^"]*"`).test(s)?s.replace(new RegExp(`\\b${n}="[^"]*"`),`${n}="${v}"`):s.replace(/\s*\/?>$/,m=>` ${n}="${v}"${m}`);
@@ -65,14 +66,16 @@ export async function finishQuotationLayout(zip:JSZip,sheetFile:string):Promise<
  };
  const height=(row:number,h:number)=>{xml=xml.replace(new RegExp(`<row\\b(?=[^>]*\\br="${row}")[^>]*>`),t=>put(put(t,'ht',String(h)),'customHeight','1'));};
  format('E1',18,false);height(1,30);
- merge('A18:J18');format('A18',12,false);height(18,24);
- for(let r=19;r<=33;r++){merge(`B${r}:C${r}`);format(`B${r}`,10,true);height(r,r===19?30:36);}
- for(const r of [34,35]){merge(`A${r}:E${r}`);format(`A${r}`,11,true);height(r,32);}
- for(let r=7;r<=15;r++){format(`B${r}`,10,true);height(r,30);}
+ const titleRow=area2?17:18,headerRow=titleRow+1;
+ merge(`A${titleRow}:J${titleRow}`);format(`A${titleRow}`,12,false);height(titleRow,24);
+ for(let r=headerRow;r<=headerRow+14;r++){merge(`B${r}:C${r}`);format(`B${r}`,10,true);height(r,r===headerRow?30:36);}
+ for(const r of [headerRow+15,headerRow+16]){merge(`A${r}:E${r}`);format(`A${r}`,11,true);height(r,32);}
+ for(let r=7;r<=(area2?14:15);r++){format(`B${r}`,10,true);height(r,30);}
  for(const row of [212,213]){merge(`E${row}:H${row}`);format(`E${row}`,10,true);height(row,row===212?100:36);}
  merge('E128:F128');format('E128',10,true);height(128,100);
  format('D122',10,true);height(122,35);
- format('A133',10,true);for(let r=133;r<=138;r++)height(r,60);
+ const remarkRow=area2?83:133;
+ format(`A${remarkRow}`,10,true);for(let r=remarkRow;r<=remarkRow+5;r++)height(r,60);
  styles=styles.replace(/<fonts\b[^>]*>[\s\S]*?<\/fonts>/,`<fonts count="${fonts.length}">${fonts.join('')}</fonts>`).replace(/<cellXfs\b[^>]*>[\s\S]*?<\/cellXfs>/,`<cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs>`);
  zip.file(sheetFile,xml);zip.file('xl/styles.xml',styles);return new Set([sheetFile,'xl/styles.xml']);
 }
