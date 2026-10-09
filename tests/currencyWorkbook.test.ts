@@ -8,6 +8,7 @@ for(const area of [2,3])test(`Area ${area}: CNY source converts once, discount f
  const w=new ExcelJS.Workbook(),s=w.addWorksheet('Summary');
  const total=area===2?15:16,sub=area===2?33:34,grand=sub+1,detail=area===2?39:40;
  const formula=(a:string,f:string)=>s.getCell(a).value={formula:f,result:0};
+ if(area===2){for(const [a,v] of Object.entries({B7:'Room A',B8:'Room B',A15:'Total Price:',A36:'Room A',A40:'Total Price:',A42:'Room B',A45:'Total Price:',A47:'Remark:'}))s.getCell(a).value=v;s.getCell('H40').value=1000;s.getCell('H45').value=2032;}
  s.getCell('H7').value=1000;s.getCell('H8').value=2032;if(area===3)s.getCell('H9').value=500;
  s.getCell('I2').value=.9;s.getCell('F4').value=600;s.getCell('H'+detail).value=2032;
  formula('I'+detail,'H'+detail);formula('J'+detail,`I${detail}*$I$2`);

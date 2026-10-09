@@ -1,13 +1,15 @@
-import {createHash} from 'node:crypto';
+import {area2Structure} from './area2Structure.js';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import {readTemplateWorkbook} from './templateWorkbook.js';
 import {shiftRowReferences} from './templateRows.js';
 // Source-specific, user-approved deletion. Preserve all unrelated ZIP parts.
 export async function normalizeArea2(raw:Buffer){
-const hash=(b:Buffer)=>createHash('sha256').update(b).digest('hex');
-if(hash(raw)!=='b7614de28ab6da7e4f3ae2aa39e059f2bb6080d9752553ab89e0ce90f152f202')throw new Error('Area 2 preview currently supports only the reviewed original workbook. Upload the same unmodified raw file used for acceptance testing.');
 const before=await readTemplateWorkbook(raw), name=before[0].name;
+// A normal two-room workbook needs no destructive normalization.
+if(/合计/.test(String(before[0].cells.A9?.value))){area2Structure(before[0]);return raw;}
+// Retain the previously approved zero Other-row normalization.
+if(before[0].cells.B8?.value!=='其他'||!String(before[0].cells.A10?.value).includes('合计'))throw Error('Area 2 requires two priced rooms. The uploaded summary has a different structure.');
 assert.equal(before[0].cells.B8.value,'其他');
 for(const c of ['D','E','F','G','H'])assert.equal(before[0].cells[c+'8'].value,0);
 const zip=await JSZip.loadAsync(raw), original=await JSZip.loadAsync(raw);
@@ -52,5 +54,6 @@ for(const p of Object.keys(original.files)){if(original.files[p].dir)continue;
  if(!(await original.files[p].async('nodebuffer')).equals(await zip.files[p].async('nodebuffer')))changed.push(p);
  if(p.startsWith('xl/media/'))assert.deepEqual(await original.files[p].async('nodebuffer'),await zip.files[p].async('nodebuffer'));
 }
+area2Structure(after[0]);
 return output;
 }

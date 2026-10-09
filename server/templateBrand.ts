@@ -71,11 +71,19 @@ export async function finishQuotationLayout(zip:JSZip,sheetFile:string):Promise<
  for(let r=headerRow;r<=headerRow+14;r++){merge(`B${r}:C${r}`);format(`B${r}`,10,true);height(r,r===headerRow?30:36);}
  for(const r of [headerRow+15,headerRow+16]){merge(`A${r}:E${r}`);format(`A${r}`,11,true);height(r,32);}
  for(let r=7;r<=(area2?14:15);r++){format(`B${r}`,10,true);height(r,30);}
- for(const row of [212,213]){merge(`E${row}:H${row}`);format(`E${row}`,10,true);height(row,row===212?100:36);}
- merge('E128:F128');format('E128',10,true);height(128,100);
- format('D122',10,true);height(122,35);
- const remarkRow=area2?83:133;
- format(`A${remarkRow}`,10,true);for(let r=remarkRow;r<=remarkRow+5;r++)height(r,60);
+ const textRow=(text:string)=>{
+  const found=[...xml.matchAll(/<c\b[^>]*\br="A(\d+)"[^>]*>[\s\S]*?<\/c>/g)].find(m=>m[0].includes(text));
+  return found?Number(found[1]):undefined;
+ };
+ const me=area2?textRow('M&amp;E Work'):120;
+ if(me!==undefined){
+  const description=area2?me+9:212;
+  for(const row of [description,description+1]){merge(`E${row}:H${row}`);format(`E${row}`,10,true);height(row,row===description?100:36);}
+  merge(`E${me+8}:F${me+8}`);format(`E${me+8}`,10,true);height(me+8,100);
+  format(`D${me+2}`,10,true);height(me+2,35);
+ }
+ const remarkRow=area2?textRow('Remark:'):133;
+ if(remarkRow){format(`A${remarkRow}`,10,true);for(let r=remarkRow;r<=remarkRow+5;r++)height(r,60);}
  styles=styles.replace(/<fonts\b[^>]*>[\s\S]*?<\/fonts>/,`<fonts count="${fonts.length}">${fonts.join('')}</fonts>`).replace(/<cellXfs\b[^>]*>[\s\S]*?<\/cellXfs>/,`<cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs>`);
  zip.file(sheetFile,xml);zip.file('xl/styles.xml',styles);return new Set([sheetFile,'xl/styles.xml']);
 }

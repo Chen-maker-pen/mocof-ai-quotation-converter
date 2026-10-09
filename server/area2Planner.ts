@@ -1,3 +1,4 @@
+import {area2Structure,area2WorkRows} from './area2Structure.js';
 import type {StepContext,StepPlan} from './sequentialRecipe.js';
 import {officialAreaCatalog} from './officialAreaCatalog.js';
 import {evaluateWorkbookValue} from '../src/lib/formulaEvaluator.js';
@@ -83,39 +84,41 @@ export function planArea2(context:StepContext, approvals:{correctGrandTotalRows?
  case 'A2-S026':translate(['A','B'],[['序号','No'],['产品图片','Product PIC']]);translate(['C','D'],[['组合','Combi'],['名称','Name']]);break;
  case 'A2-S027':translate(['E','F'],[['型号','Model'],['宽深高','WDH']]);translate(['G','H'],[['数量','Qty'],['单价','Before Price']]);break;
  case 'A2-S028':translate(['C'],[['23系统柜','23 system cabinet'],['25厨柜','25 Kitchen Cabinet'],['美家背景墙','Background Wall Panel'],['新居产品','New Product']]);break;
- case 'A2-S029':
- if(!approvals.useYangRooms)return stop('Yang room mapping requires approval.');
- if(sheet.cells.B7?.value!=='客餐厅//Living and Dining Room'||sheet.cells.B8?.value!=='主卧房//Master Bedroom'||sheet.cells.A36?.value!=='客餐厅//Living and Dining Room'||sheet.cells.A75?.value!=='主卧房//Master Bedroom'||sheet.cells.A70?.value!=='Total Price:'||sheet.cells.A81?.value!=='Total Price:')return stop('Yang room sections or subtotal positions differ from reviewed source.');
- formula('H7','H70');formula('H8','H81');break;
- case 'A2-S030':{
- if(!approvals.reviewedPricing)return stop('Reviewed Yang pricing rules require approval.');
- for(const r of [60,69,70,80,81])if(!String(sheet.cells['A'+r]?.value).includes('Total Price'))return stop('Yang subtotal positions changed.');
- for(const [a,f]of Object.entries({H60:'SUM(H39:H59)',H69:'SUM(H63:H68)',H70:'SUM(H60,H69)',H80:'SUM(H78:H79)',H81:'H80'}))formula(a,f);
- for(let r=39;r<=81;r++)if(typeof sheet.cells['H'+r]?.value==='number'){
- formula('I'+r,`H${r}`);formula('J'+r,`I${r}*$I$2`);
+ case 'A2-S029':{
+ const layout=area2Structure(sheet,true);
+ for(const room of layout.rooms)formula('H'+room.row,'H'+room.end);
+ break;
  }
- for(const r of [38,62,77]){set('H'+r,'Software Price');set('I'+r,'Before Price');set('J'+r,'After Price');}
- for(const r of [7,8]){formula('I'+r,`H${r}`);formula('J'+r,`I${r}*$I$2`);}
+ case 'A2-S030':{
+ const layout=area2Structure(sheet,true);
+ // Keep supplier subtotals: do not silently override source rounding adjustments.
+ for(let r=layout.detailStart;r<=layout.detailEnd;r++){
+  if(typeof sheet.cells['H'+r]?.value==='number'){
+   formula('I'+r,`H${r}`);formula('J'+r,`I${r}*$I$2`);
+  }else if(/单价|Before Price/.test(String(sheet.cells['H'+r]?.value))){
+   set('H'+r,'Software Price');set('I'+r,'Before Price');set('J'+r,'After Price');
+  }
+ }
+ for(const room of layout.rooms){formula('I'+room.row,'I'+room.end);formula('J'+room.row,'J'+room.end);}
  for(const c of ['D','E','H','I','J'])formula(c+'15',`SUM(${c}7:${c}14)`);
  break;
  }
  case 'A2-S031':{
- if(!approvals.reviewedPricing)return stop('Reviewed Yang pricing rules require approval.');
- add({kind:'insert_rows',address:'',beforeRow:120,count:11,inheritHorizontalMerges:false});
- // The approved source-price rule supersedes the prompt's H2 conversion.
- for(let r=44;r<=222;r++)if(typeof sheet.cells['H'+r]?.value==='number'){
- formula('I'+r,`H${r}`);formula('J'+r,`I${r}*$I$2`);
- }
- set('A120','M&E Work');set('D128','Curtain');
- for(const r of [121,126])for(const [c,v]of Object.entries({A:'No',D:'Name',E:'Model',G:'Qty'}))set(c+r,v);
+ const layout=area2Structure(sheet,true);
+ // Append work tables after all source content; never insert through product rows.
+ const start=Math.max(...Object.values(sheet.cells).map(c=>c.row))+2;
+ set('A'+start,'M&E Work');
+ for(const r of [start+1,start+6])for(const [c,v]of Object.entries({A:'No',D:'Name',E:'Model',G:'Qty'}))set(c+r,v);
  const description=step.text.split('Cell E212\n')[1]?.split('\nNext row\n');
  if(!description||description.length!==2)return stop('Missing original M&E description.');
- set('E212',description[0]);
- set('E213',description[1].split('\nCell E128\n')[0]);
- set('E128',step.text.split('\nCell E128\n')[1]);
+ set('E'+(start+9),description[0]);set('E'+(start+10),description[1].split('\nCell E128\n')[0]);
+ set('E'+(start+8),step.text.split('\nCell E128\n')[1]);
  break;
  }
- case 'A2-S032':set('G122',1);set('G128',1);set('D122','Electrical and Plaster work');set('D128','Curtain');break;
+ case 'A2-S032':{
+ const rows=area2WorkRows(sheet);
+ set('G'+rows.electrical,1);set('G'+rows.curtain,1);set('D'+rows.electrical,'Electrical and Plaster work');set('D'+rows.curtain,'Curtain');break;
+ }
  case 'A2-S033':{
  if(!sheet.mergedRanges.includes('A1:D4'))return stop('Logo area differs from reviewed Yang layout.');
  const remarks=Object.entries(sheet.cells).filter(([a,c])=>/^A\d+$/.test(a)&&typeof c.value==='string'&&c.value.startsWith('备注:'));

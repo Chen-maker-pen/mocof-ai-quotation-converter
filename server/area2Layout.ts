@@ -1,12 +1,14 @@
+import {area2Structure,area2WorkRows} from './area2Structure.js';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import {createPreservedTemplateWorkbook,readTemplateWorkbook} from './templateWorkbook.js';
 export async function layoutArea2(raw:Buffer){
 const before=await readTemplateWorkbook(raw),s=before[0],ops:any[]=[];
+const layout=area2Structure(s,true),work=area2WorkRows(s),me=work.start;
 for(const [address,value]of Object.entries({G2:'Payable factor',G3:'Supplementary factor',J2:'Budget (MYR)',J3:s.cells.H3.value,I4:s.cells.H4.value,A18:'No',B18:'Item',D18:'sqft/ per',E18:'Qty/ sqft',F18:'RM49,800.00',G18:'RM79,800.00'}))ops.push({sheetName:s.name,address,value});
 ops.push({sheetName:s.name,address:'I4',value:s.cells.H4.value,formula:'H4'});
 for(let r=19;r<=32;r++)ops.push({sheetName:s.name,address:'E'+r,value:s.cells.F4.value,formula:'$F$4'});
-for(const range of ['F7:J15','F19:J34','H39:J81','J3','I4'])ops.push({kind:'format_cells',sheetName:s.name,range,numberFormat:'"RM"#,##0.00'});
+for(const range of ['F7:J15','F19:J34',`H${layout.detailStart}:J${layout.detailEnd}`,'J3','I4'])ops.push({kind:'format_cells',sheetName:s.name,range,numberFormat:'"RM"#,##0.00'});
 for(const range of ['I2','I3'])ops.push({kind:'format_cells',sheetName:s.name,range,numberFormat:'0%'});
 const p=await createPreservedTemplateWorkbook(raw,'Yang.xlsx',ops),z=await JSZip.loadAsync(Buffer.from(p.transformedXlsxBase64,'base64'));
 let xml=await z.file('xl/worksheets/sheet1.xml')!.async('string');
@@ -19,31 +21,24 @@ xml=xml.replace(/<col\b[^>]*\/>/g,t=>{
  out+=v;
  }return out;
 });
-const nonempty=new Set(Object.values(s.cells).filter(c=>c.formula||(c.value!==''&&c.value!==undefined)).map(c=>c.row));
-// Collapse empty gaps only, without changing literal E212/E213 addresses.
-for(let r=90;r<212;r++)if(!nonempty.has(r)){
- const re=new RegExp(`<row\\b(?=[^>]*\\br="${r}")[^>]*>`);
- if(re.test(xml))xml=xml.replace(re,t=>t.replace(/\s(?:hidden|ht|customHeight)="[^"]*"/g,'').replace('>',' hidden="1" ht="0" customHeight="1">'));
- else{const next=new RegExp(`<row\\b(?=[^>]*\\br="(?:${Array.from({length:214-r},(_,i)=>r+i+1).join('|')})")[^>]*>`);xml=xml.replace(next,m=>`<row r="${r}" hidden="1" ht="0" customHeight="1"></row>`+m);}
-}
 // Apply the established navy section title and gray header styles.
 const st=(a:string)=>new RegExp(`<c\\b(?=[^>]*\\br="${a}")[^>]*\\bs="(\\d+)"`).exec(xml)?.[1];
 const title=st('A5'),head=st('A6');
 xml=xml.replace(/<c\b[^>]*>/g,t=>{
- const a=/\br="([A-Z]+)(\d+)"/.exec(t);if(!a)return t;const r=+a[2];const style=r===17||r===120?title:r===18||r===121||r===126?head:undefined;
+ const a=/\br="([A-Z]+)(\d+)"/.exec(t);if(!a)return t;const r=+a[2];const style=r===17||r===me?title:r===18||r===me+1||r===me+6?head:undefined;
  return style?(/\bs="\d+"/.test(t)?t.replace(/\bs="\d+"/,`s="${style}"`):t.replace(/\s*\/?>(?=$)/,m=>` s="${style}"${m}`)):t;
 });
 // Begin the existing remarks block on a fresh printed page.
 xml=xml.replace(/<rowBreaks\b[^>]*>[\s\S]*?<\/rowBreaks>/,'');
-const breaks='<rowBreaks count="1" manualBreakCount="1"><brk id="82" min="0" max="16383" man="1"/></rowBreaks>';
+const breaks=`<rowBreaks count="1" manualBreakCount="1"><brk id="${layout.remarks-1}" min="0" max="16383" man="1"/></rowBreaks>`;
 xml=xml.replace(/(?=<(?:colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|extLst)\b|<\/worksheet>)/,breaks);
 const body=st('B19');
 // Materialize blank table cells so borders are visible without shifting content.
-for(const r of [120,121,122,126,128]){
+for(const r of [me,me+1,me+2,me+6,me+8]){
  const re=new RegExp(`<row\\b(?=[^>]*\\br="${r}")[^>]*>[\\s\\S]*?<\\/row>`);
  xml=xml.replace(re,row=>{
- const style=r===120?title:[121,126].includes(r)?head:body;
- const opening=row.slice(0,row.indexOf('>')+1).replace(/\s(?:ht|customHeight)="[^"]*"/g,'').replace('>',` ht="${r===128?100:r===122?48:26}" customHeight="1">`);
+ const style=r===me?title:[me+1,me+6].includes(r)?head:body;
+ const opening=row.slice(0,row.indexOf('>')+1).replace(/\s(?:ht|customHeight)="[^"]*"/g,'').replace('>',` ht="${r===me+8?100:r===me+2?48:26}" customHeight="1">`);
  const cells=new Map([...row.matchAll(/<c\b[^>]*\br="([A-Z]+)\d+"[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g)].map(m=>[m[1],m[0]]));
  return opening+Array.from({length:10},(_,i)=>{
  const col=String.fromCharCode(65+i);let cell=cells.get(col)||`<c r="${col}${r}"/>`;
@@ -51,7 +46,7 @@ for(const r of [120,121,122,126,128]){
  }).join('')+'</row>';
  });
 }
-const added=['A120:J120','A121:C121','E121:F121','G121:J121','A122:C122','E122:F122','G122:J122','A126:C126','E126:F126','G126:J126','A128:C128','G128:J128'];
+const added=[`A${me}:J${me}`,`A${me+1}:C${me+1}`,`E${me+1}:F${me+1}`,`G${me+1}:J${me+1}`,`A${me+2}:C${me+2}`,`E${me+2}:F${me+2}`,`G${me+2}:J${me+2}`,`A${me+6}:C${me+6}`,`E${me+6}:F${me+6}`,`G${me+6}:J${me+6}`,`A${me+8}:C${me+8}`,`G${me+8}:J${me+8}`];
 xml=xml.replace(/<mergeCells\b[^>]*>([\s\S]*?)<\/mergeCells>/,(_,b)=>{
  const body=b+added.filter(r=>!b.includes(`ref="${r}"`)).map(r=>`<mergeCell ref="${r}"/>`).join('');
  return `<mergeCells count="${[...body.matchAll(/<mergeCell\b/g)].length}">${body}</mergeCells>`;
