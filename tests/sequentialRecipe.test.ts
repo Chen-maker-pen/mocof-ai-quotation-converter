@@ -140,3 +140,19 @@ test('scalar range clearing and absolute addresses are expanded atomically',asyn
   assert.equal(result.workbookSheets[0].cells.B1.value,'');
   assert.equal(result.workbookSheets[0].cells.A2.value,'Customer');
 });
+
+test('unrelated source formula defects are preserved; dependent sheets still recalculate', async () => {
+  const z=await JSZip.loadAsync(await fixture());
+  z.file('xl/workbook.xml','<workbook><sheets><sheet name="Source" r:id="r1"/><sheet name="Legacy" r:id="r2"/><sheet name="Dependent" r:id="r3"/></sheets></workbook>');
+  z.file('xl/_rels/workbook.xml.rels','<Relationships><Relationship Id="r1" Type="x/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="r2" Type="x/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="r3" Type="x/worksheet" Target="worksheets/sheet3.xml"/></Relationships>');
+  const legacy='<worksheet><sheetData><row r="1"><c r="A1"><f>1+2)</f><v>3</v></c></row></sheetData></worksheet>';
+  z.file('xl/worksheets/sheet2.xml',legacy);
+  z.file('xl/worksheets/sheet3.xml','<worksheet><sheetData><row r="1"><c r="A1"><f>Source!A1*2</f><v>2</v></c><c r="B1"><f>A1+1</f><v>3</v></c></row></sheetData></worksheet>');
+  let first=true;
+  const result=await executeSequentialRecipe(await z.generateAsync({type:'nodebuffer'}),'test.xlsx',3,customer,{planner:async c=>{if(first){first=false;return op(c);}return none(c);}});
+  assert.equal(result.executions[0].status,'applied');
+  const output=await JSZip.loadAsync(Buffer.from(result.preserved.transformedXlsxBase64,'base64'));
+  assert.equal(await output.file('xl/worksheets/sheet2.xml')!.async('string'),legacy);
+  assert.equal(result.workbookSheets[2].cells.A1.value,20);
+  assert.equal(result.workbookSheets[2].cells.B1.value,21);
+});
