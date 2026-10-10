@@ -108,7 +108,7 @@ export async function executeSequentialRecipe(raw: Buffer, filename: string, are
         for (const op of operations) {
           if (!op.evidence?.trim() || !step.text.includes(op.evidence)) throw new Error('Patch evidence must quote the current official instruction.');
           if(op.kind==='replace_logo'){
-            if(step.id!=='A3-S033')throw Error('Logo replacement requires the explicit final branding instruction.');
+            if(!['A3-S033','A2-S033'].includes(step.id))throw Error('Logo replacement requires the explicit final branding instruction.');
             structure.push({kind:'replace_logo',sheetName:op.sheetName,promptNumber:String(index+1)});continue;
           }
           if (op.kind === 'format_cells') {
@@ -174,10 +174,15 @@ export async function executeSequentialRecipe(raw: Buffer, filename: string, are
           sheet.cells[address] = { address, row, column, value, ...(formula ? { formula } : {}) };
           changed.set(`${sheet.name}!${address}`, { sheetName: sheet.name, address, value, formula, promptNumber: String(index + 1) });
         }
-        // Deterministic calculation owns every cached formula result. Model
-        // proposed totals are never accepted as cached results.
+        // Preserve unrelated supplier sheets, including pre-existing formula
+        // defects. Recalculate edited sheets and conservatively include sheets
+        // with cross-sheet references or structurally shifted formulas.
+        const recalculateSheets = new Set(plan.operations.map(op=>op.sheetName));
+        for(const sheet of model) for(const cell of Object.values(sheet.cells)) {
+          if(cell.formula && (cell.formula.includes('!') || cell.formula !== sheets.find(s=>s.name===sheet.name)?.cells[cell.address]?.formula)) recalculateSheets.add(sheet.name);
+        }
         for (const sheet of model) for (const cell of Object.values(sheet.cells)) {
-          if (!cell.formula) continue;
+          if (!cell.formula || !recalculateSheets.has(sheet.name)) continue;
           const value = evaluateWorkbookValue(sheet, cell.address, model);
           if (value === undefined) throw new Error(`Cannot recalculate ${sheet.name}!${cell.address}; step rolled back.`);
           const before = sheets.find(s => s.name === sheet.name)!.cells[cell.address];

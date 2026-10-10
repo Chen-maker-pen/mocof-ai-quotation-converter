@@ -41,6 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 font-normal">Quotation Converter System</p>
+              <a className="text-[10px] text-slate-300 underline" href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer">Rates by ExchangeRate-API</a>
             </div>
           </div>
 

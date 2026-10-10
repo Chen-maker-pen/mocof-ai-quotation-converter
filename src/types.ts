@@ -54,6 +54,8 @@ export interface SourceImage {
 }
 
 export interface ExchangeRateSnapshot {
+  source?: string;
+  rateDate?: string;
   sourceCurrency: 'CNY';
   targetCurrency: CurrencyCode;
   rate: number; // e.g. 0.65 CNY -> MYR
