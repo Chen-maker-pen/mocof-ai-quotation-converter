@@ -78,7 +78,7 @@ export async function finishQuotationLayout(zip:JSZip,sheetFile:string):Promise<
  const me=area2?textRow('M&amp;E Work'):120;
  if(me!==undefined){
   const description=area2?me+9:212;
-  for(const row of [description,description+1]){merge(`E${row}:H${row}`);format(`E${row}`,10,true);height(row,row===description?100:36);}
+  for(const row of [description,description+1]){merge(`E${row}:H${row}`);format(`E${row}`,10,true);height(row,row===description?220:48);}
   merge(`E${me+8}:F${me+8}`);format(`E${me+8}`,10,true);height(me+8,100);
   format(`D${me+2}`,10,true);height(me+2,35);
  }
