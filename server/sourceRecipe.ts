@@ -6,6 +6,10 @@ import {normalizeArea2} from './area2Source.js';
 import {planArea2} from './area2Planner.js';
 import {correctArea2Packages} from './area2Corrections.js';
 import {layoutArea2} from './area2Layout.js';
+import {area4Structure} from './area4Structure.js';
+import {planArea4} from './area4Planner.js';
+import {correctArea4Pricing} from './area4Corrections.js';
+import {layoutArea4} from './area4Layout.js';
 import {readTemplateWorkbook} from './templateWorkbook.js';
 import {createHash} from 'node:crypto';
 import { executeSequentialRecipe, type RecipeCustomer } from "./sequentialRecipe.js";
@@ -21,8 +25,20 @@ export const approvedArea3Decisions = [
 ];
 export type SourceRecipeOptions = Partial<Parameters<typeof executeSequentialRecipe>[4]> & {exchangeSnapshot?:ExchangeRateSnapshot};
 export async function runSourceRecipe(raw: Buffer, filename: string, area: number, customer: RecipeCustomer, options: SourceRecipeOptions = {}) {
-  if(![2,3].includes(area))throw new Error('Currency conversion for this Area is not yet validated. Please use reviewed Area 2 or Area 3.');
+  if(![2,3,4].includes(area))throw new Error('Currency conversion for this Area is not yet validated. Please use reviewed Area 2, Area 3 or Area 4.');
   const exchangeSnapshot=options.exchangeSnapshot || await createRateSnapshot('MYR');
+  if(area===4){
+    if(customer.quotationType!=='project')throw new Error('Area 4 currently supports Project quotation only.');
+    area4Structure((await readTemplateWorkbook(raw))[0]);
+    const result=await executeSequentialRecipe(raw,filename,area,customer,{...options,planner:async c=>planArea4(c)});
+    if(result.executions.every(e=>e.status==='applied'||e.status==='skipped')){
+      let bytes=await layoutArea4(await correctArea4Pricing(Buffer.from(result.preserved.transformedXlsxBase64,'base64')));
+      bytes=await applyCnyToMyr(bytes,area,exchangeSnapshot);
+      result.preserved.transformedXlsxBase64=bytes.toString('base64');result.preserved.transformedSha256=createHash('sha256').update(bytes).digest('hex');
+      result.workbookSheets=await readTemplateWorkbook(bytes);
+    }
+    return result;
+  }
   if(area===2){
     if(customer.quotationType!=='project')throw new Error('Area 2 currently supports the reviewed Project quotation flow only.');
     const normalized=await normalizeArea2(raw);
