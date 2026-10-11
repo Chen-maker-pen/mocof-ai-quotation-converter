@@ -251,8 +251,8 @@ export const UploadView: React.FC<UploadViewProps> = ({
           <p className="text-sm font-bold text-red-900">Conversion did not complete</p>
           <p className="mt-1 break-words text-sm leading-6 text-red-800">{conversionError}</p>
           <p className="mt-2 text-xs leading-5 text-red-700">
-            Tip: on Vercel, use an .xlsx below 4 MB. If this message mentions Gemini, check that
-            <code className="mx-1 rounded bg-red-100 px-1">GEMINI_API_KEY</code> is saved for Production and redeploy once.
+            Use an .xlsx below 4 MB. A Gemini 503 means temporary service unavailability; it does not mean your
+            <code className="mx-1 rounded bg-red-100 px-1">GEMINI_API_KEY</code> is invalid. Reviewed Area 3 Project conversions use deterministic rules.
           </p>
         </div>
       )}

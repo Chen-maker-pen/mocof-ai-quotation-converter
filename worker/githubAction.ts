@@ -21,7 +21,7 @@ import {
 } from '../server/persistentJobs.js';
 import { Project, Quote } from '../src/types.js';
 
-function createInitialProjectAndQuote(input: Record<string, unknown>) {
+async function createInitialProjectAndQuote(input: Record<string, unknown>, savedRate?: Quote['exchangeRate']) {
   const now = new Date().toISOString();
   const projectId = `proj-${Date.now()}`;
   const quoteId = `quote-${Date.now()}`;
@@ -33,7 +33,7 @@ function createInitialProjectAndQuote(input: Record<string, unknown>) {
     versionLabel: 'v1.0-Initial',
     status: 'Processing',
     currency,
-    exchangeRate: createRateSnapshot(currency),
+    exchangeRate: savedRate || await createRateSnapshot(currency),
     worksheets: [],
     supplementaryItems: [],
     wholeHouseTotals: {
@@ -84,7 +84,8 @@ async function main() {
     });
 
     const source = await readSourceForWorker(job);
-    const { project, quote } = createInitialProjectAndQuote(job.input.projectData as Record<string, unknown>);
+    const { project, quote } = await createInitialProjectAndQuote(job.input.projectData as Record<string, unknown>, job.exchangeSnapshot);
+    if(!job.exchangeSnapshot)await updatePersistentConversionJob(jobId,{exchangeSnapshot:quote.exchangeRate});
     // This local worker database is used only while constructing the result.
     // The completed result itself is persisted in Vercel Blob for the browser.
     db.createProject(project);
@@ -110,7 +111,8 @@ async function main() {
         progress: async (progress) => { await updatePersistentConversionJob(jobId, { progress }); },
       },
     );
-    if(result.quote.documentedPromptExecutions?.some(e=>e.status==='needs_review'))throw Error('One or more prompt instructions need review; inspect the saved checkpoint.');
+    const unresolved=result.quote.documentedPromptExecutions?.find(e=>e.status==='needs_review');
+    if(unresolved)throw Error(unresolved.result || 'One or more prompt instructions need review.');
     result.quote.conversionJobId=jobId;
     const pdf=await generateCustomerPdf(result.quote,result.project,db.getConversionProfile());
     const output = result.quote?.preservedTemplateWorkbook;

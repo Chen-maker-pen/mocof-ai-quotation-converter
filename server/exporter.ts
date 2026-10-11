@@ -13,6 +13,21 @@ import { pathToFileURL } from 'node:url';
 import { exportTemplate } from './templateExport.js';
 import { Quote, ConversionProfile, Project } from '../src/types.js';
 
+/** Only the first, customer quotation sheet is printed. Source tabs remain in XLSX. */
+export async function selectCustomerPrintSheet(zip: JSZip) {
+  const entry=zip.file('xl/workbook.xml');
+  if(!entry)throw new Error('Workbook metadata is missing.');
+  let index=0;
+  let xml=await entry.async('string');
+  xml=xml.replace(/<sheet\b[^>]*\/?\s*>/g,tag=>{
+    const clean=tag.replace(/\sstate="[^"]*"/g,'');
+    return index++===0?clean:clean.replace(/\/?\s*>$/,end=>` state="hidden"${end}`);
+  });
+  if(!index)throw new Error('No customer worksheet is available to print.');
+  xml=xml.replace(/\bactiveTab="\d+"/g,'activeTab="0"');
+  zip.file('xl/workbook.xml',xml);
+}
+
 /**
  * Return the source clone, including validated manual cell edits.
  */
@@ -36,6 +51,7 @@ export async function generateCustomerPdf(
   // Print-only copy: keep cells, drawings and geometry unchanged; fit wide
   // quotation columns onto one page while allowing vertical pagination.
   const zip = await JSZip.loadAsync(workbook);
+  await selectCustomerPrintSheet(zip);
   for (const name of Object.keys(zip.files).filter(n=>/^xl\/worksheets\/sheet\d+\.xml$/.test(n))) {
     let xml = await zip.file(name)!.async('string');
     if (!/<sheetPr\b/.test(xml)) xml=xml.replace(/(<worksheet\b[^>]*>)/,'$1<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>');

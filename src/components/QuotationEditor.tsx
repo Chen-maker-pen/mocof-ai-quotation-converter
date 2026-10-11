@@ -5,6 +5,7 @@
  */
 
 import React, { useState } from 'react';
+import QuotationPreview from './QuotationPreview';
 import {
   Quote,
   Project,
@@ -61,6 +62,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [showVersions, setShowVersions] = useState<boolean>(false);
   const [showPromptRecipe, setShowPromptRecipe] = useState<boolean>(false);
+  const [showFinalPreview,setShowFinalPreview]=useState(false);
   const [workbookMode, setWorkbookMode] = useState<'grid' | 'details'>(() =>
     quote.workbookSheets?.length ? 'grid' : 'details'
   );
@@ -525,13 +527,13 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
           </button>
 
           <button
-            disabled={Boolean(editedQuote.preservedTemplateWorkbook)}
-            title={editedQuote.preservedTemplateWorkbook ? 'Source workbook grid is authoritative; legacy detail forms are unavailable for this draft.' : undefined}
-            onClick={() => setWorkbookMode(workbookMode === 'grid' ? 'details' : 'grid')}
+            disabled={Boolean(editedQuote.preservedTemplateWorkbook)&&!editedQuote.conversionJobId}
+            title={editedQuote.conversionJobId?'Preview the exact saved quotation before downloading':editedQuote.preservedTemplateWorkbook?'Complete conversion to preview saved exports':undefined}
+            onClick={() => editedQuote.conversionJobId?setShowFinalPreview(true):setWorkbookMode(workbookMode === 'grid' ? 'details' : 'grid')}
             className="px-3 py-2 bg-slate-900 hover:bg-black text-white text-xs font-semibold rounded-lg transition-colors inline-flex items-center"
           >
             <TableProperties className="w-3.5 h-3.5 mr-1.5" />
-            {editedQuote.preservedTemplateWorkbook ? 'Source Workbook' : workbookMode === 'grid' ? 'Show Detail Forms' : 'Show Sheet Grid'}
+            {editedQuote.preservedTemplateWorkbook ? 'Final Preview' : workbookMode === 'grid' ? 'Show Detail Forms' : 'Show Sheet Grid'}
           </button>
 
           {/* Save Version button */}
@@ -567,6 +569,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
         </div>
       </div>
 
+      {showFinalPreview&&editedQuote.conversionJobId&&<QuotationPreview jobId={editedQuote.conversionJobId} onClose={()=>setShowFinalPreview(false)}/>}
       {/* Google-Sheet-style worksheet tabs */}
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs p-2 flex items-center space-x-1 overflow-x-auto text-xs">
         {(editedQuote.preservedTemplateWorkbook ? (editedQuote.workbookSheets || []).map((s, i) => ({ worksheetIndex: i + 1, name: s.name })) : editedQuote.worksheets).map((tab) => (
@@ -1003,7 +1006,7 @@ export const QuotationEditor: React.FC<QuotationEditorProps> = ({
               <button onClick={() => deleteBossPrompt(command.id)} className="mt-1 p-1.5 text-red-500 hover:bg-red-50 rounded" title="Delete prompt"><Trash2 className="w-4 h-4" /></button>
             </div>
           ))}
-          <button disabled={Boolean(editedQuote.preservedTemplateWorkbook)} title="Custom prompt execution requires validated source-cell mapping" onClick={applyBossPrompts} className="w-full px-3 py-2 bg-[#5f6faf] hover:bg-[#4e5d99] text-white rounded-lg text-xs font-extrabold inline-flex items-center justify-center"><RotateCcw className="w-3.5 h-3.5 mr-1.5" />Apply Prompts to Table</button>
+          <button disabled={Boolean(editedQuote.preservedTemplateWorkbook)&&!editedQuote.conversionJobId} title="Custom prompt execution requires validated source-cell mapping" onClick={applyBossPrompts} className="w-full px-3 py-2 bg-[#5f6faf] hover:bg-[#4e5d99] text-white rounded-lg text-xs font-extrabold inline-flex items-center justify-center"><RotateCcw className="w-3.5 h-3.5 mr-1.5" />Apply Prompts to Table</button>
           {(editedQuote.bossPromptCommands || []).some((command) => command.status) && (
             <div className="border-t border-slate-200 pt-2 space-y-1.5">
               <h5 className="text-[10px] uppercase tracking-wide font-extrabold text-slate-600">Applied Prompt Transactions</h5>
