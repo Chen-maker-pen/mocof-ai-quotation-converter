@@ -1,3 +1,6 @@
+import {standardAreas,planStandardArea} from './standardAreaPlanner.js';
+import {standardAreaStructure} from './standardAreaStructure.js';
+import {finishStandardArea} from './standardAreaFinalize.js';
 import {applyCnyToMyr} from './currencyWorkbook.js';
 import {createRateSnapshot} from './exchange.js';
 import type {ExchangeRateSnapshot} from '../src/types.js';
@@ -25,8 +28,22 @@ export const approvedArea3Decisions = [
 ];
 export type SourceRecipeOptions = Partial<Parameters<typeof executeSequentialRecipe>[4]> & {exchangeSnapshot?:ExchangeRateSnapshot};
 export async function runSourceRecipe(raw: Buffer, filename: string, area: number, customer: RecipeCustomer, options: SourceRecipeOptions = {}) {
-  if(![2,3,4].includes(area))throw new Error('Currency conversion for this Area is not yet validated. Please use reviewed Area 2, Area 3 or Area 4.');
+  if(!Number.isInteger(area)||area<1||area>10)throw new Error('Choose Area 1 through Area 10.');
+  if(standardAreas.includes(area)){
+    if(customer.quotationType!=='project')throw new Error('This Area currently supports Project quotations only.');
+    standardAreaStructure((await readTemplateWorkbook(raw))[0],area);
+  }
   const exchangeSnapshot=options.exchangeSnapshot || await createRateSnapshot('MYR');
+  if(standardAreas.includes(area)){
+    const result=await executeSequentialRecipe(raw,filename,area,customer,{...options,planner:async c=>planStandardArea(c)});
+    if(result.executions.every(e=>e.status==='applied'||e.status==='skipped')){
+      const bytes=await finishStandardArea(Buffer.from(result.preserved.transformedXlsxBase64,'base64'),area,exchangeSnapshot);
+      result.preserved.transformedXlsxBase64=bytes.toString('base64');
+      result.preserved.transformedSha256=createHash('sha256').update(bytes).digest('hex');
+      result.workbookSheets=await readTemplateWorkbook(bytes);
+    }
+    return result;
+  }
   if(area===4){
     if(customer.quotationType!=='project')throw new Error('Area 4 currently supports Project quotation only.');
     area4Structure((await readTemplateWorkbook(raw))[0]);

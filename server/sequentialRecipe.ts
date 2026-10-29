@@ -108,7 +108,7 @@ export async function executeSequentialRecipe(raw: Buffer, filename: string, are
         for (const op of operations) {
           if (!op.evidence?.trim() || !step.text.includes(op.evidence)) throw new Error('Patch evidence must quote the current official instruction.');
           if(op.kind==='replace_logo'){
-            if(!['A3-S033','A2-S033','A4-S045'].includes(step.id))throw Error('Logo replacement requires the explicit final branding instruction.');
+            if(!['A3-S033','A2-S033','A4-S045'].includes(step.id) && !(index===recipe.steps.length-1 && /Insert this Logo/i.test(step.text)))throw Error('Logo replacement requires the explicit final branding instruction.');
             structure.push({kind:'replace_logo',sheetName:op.sheetName,promptNumber:String(index+1)});continue;
           }
           if (op.kind === 'format_cells') {

@@ -1,15 +1,17 @@
+import {standardAreaStructure} from './standardAreaStructure.js';
 import {area4Structure} from './area4Structure.js';
 import {area2WorkRows} from './area2Structure.js';
 import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import {createPreservedTemplateWorkbook,readTemplateWorkbook} from './templateWorkbook.js';
-export async function layoutArea4(raw:Buffer){
+export async function layoutArea4(raw:Buffer,area=4){
 const before=await readTemplateWorkbook(raw),s=before[0],ops:any[]=[];
-const layout=area4Structure(s,true),work=area2WorkRows(s),me=work.start;
-for(const [address,value]of Object.entries({G2:'Payable factor',G3:'Supplementary factor',J2:'Budget (MYR)',J3:s.cells.H3.value,I4:s.cells.H4.value,A20:'No',B20:'Item',D20:'sqft/ per',E20:'Qty/ sqft',F20:'RM49,800.00',G20:'RM79,800.00'}))ops.push({sheetName:s.name,address,value});
+const layout=area===4?area4Structure(s,true):standardAreaStructure(s,area,true),work=area2WorkRows(s),me=work.start;
+const delta=area-4, remap=(address:string)=>address.replace(/(\d+)$/,n=>String(Number(n)>=19?Number(n)+delta:Number(n)));
+for(const [address,value]of Object.entries({G2:'Payable factor',G3:'Supplementary factor',J2:'Budget (MYR)',J3:s.cells.H3.value,I4:s.cells.H4.value,A20:'No',B20:'Item',D20:'sqft/ per',E20:'Qty/ sqft',F20:'RM49,800.00',G20:'RM79,800.00'}))ops.push({sheetName:s.name,address:remap(address),value});
 ops.push({sheetName:s.name,address:'I4',value:s.cells.H4.value,formula:'H4'});
-for(let r=21;r<=34;r++)ops.push({sheetName:s.name,address:'E'+r,value:s.cells.F4.value,formula:'$F$4'});
-for(const range of ['F7:J17','F21:J36',`H${layout.detailStart}:J${layout.detailEnd}`,'J3','I4'])ops.push({kind:'format_cells',sheetName:s.name,range,numberFormat:'"RM"#,##0.00'});
+for(let r=21+delta;r<=34+delta;r++)ops.push({sheetName:s.name,address:'E'+r,value:s.cells.F4.value,formula:'$F$4'});
+for(const range of [`F7:J${area+13}`,`F${area+17}:J${area+32}`,`H${layout.detailStart}:J${layout.detailEnd}`,'J3','I4'])ops.push({kind:'format_cells',sheetName:s.name,range,numberFormat:'"RM"#,##0.00'});
 for(const range of ['I2','I3'])ops.push({kind:'format_cells',sheetName:s.name,range,numberFormat:'0%'});
 const p=await createPreservedTemplateWorkbook(raw,'quotation.xlsx',ops),z=await JSZip.loadAsync(Buffer.from(p.transformedXlsxBase64,'base64'));
 let xml=await z.file('xl/worksheets/sheet1.xml')!.async('string');
@@ -26,14 +28,14 @@ xml=xml.replace(/<col\b[^>]*\/>/g,t=>{
 const st=(a:string)=>new RegExp(`<c\\b(?=[^>]*\\br="${a}")[^>]*\\bs="(\\d+)"`).exec(xml)?.[1];
 const title=st('A5'),head=st('A6');
 xml=xml.replace(/<c\b[^>]*>/g,t=>{
- const a=/\br="([A-Z]+)(\d+)"/.exec(t);if(!a)return t;const r=+a[2];const style=r===19||r===me?title:r===20||r===me+1||r===me+6?head:undefined;
+ const a=/\br="([A-Z]+)(\d+)"/.exec(t);if(!a)return t;const r=+a[2];const style=r===area+15||r===me?title:r===area+16||r===me+1||r===me+6?head:undefined;
  return style?(/\bs="\d+"/.test(t)?t.replace(/\bs="\d+"/,`s="${style}"`):t.replace(/\s*\/?>(?=$)/,m=>` s="${style}"${m}`)):t;
 });
 // Begin the existing remarks block on a fresh printed page.
 xml=xml.replace(/<rowBreaks\b[^>]*>[\s\S]*?<\/rowBreaks>/,'');
 const breaks=`<rowBreaks count="1" manualBreakCount="1"><brk id="${layout.remarks-1}" min="0" max="16383" man="1"/></rowBreaks>`;
 xml=xml.replace(/(?=<(?:colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|extLst)\b|<\/worksheet>)/,breaks);
-const body=st('B21');
+const body=st('B'+(area+17));
 // Materialize blank table cells so borders are visible without shifting content.
 for(const r of [me,me+1,me+2,me+6,me+8]){
  const re=new RegExp(`<row\\b(?=[^>]*\\br="${r}")[^>]*>[\\s\\S]*?<\\/row>`);
@@ -54,7 +56,7 @@ xml=xml.replace(/<mergeCells\b[^>]*>([\s\S]*?)<\/mergeCells>/,(_,b)=>{
 });
 z.file('xl/worksheets/sheet1.xml',xml);const out=await z.generateAsync({type:'nodebuffer'});
 const after=await readTemplateWorkbook(out);
-for(const a of ['F36','G36','I36','J36'])assert.deepEqual(after[0].cells[a],s.cells[a]);
+for(const a of ['F','G','I','J'].map(col=>col+(area+32)))assert.deepEqual(after[0].cells[a],s.cells[a]);
 for(let i=1;i<before.length;i++)assert.deepEqual(after[i],before[i]);
 return out;
 }

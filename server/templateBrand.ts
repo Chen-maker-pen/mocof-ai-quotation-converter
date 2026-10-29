@@ -67,23 +67,26 @@ export async function finishQuotationLayout(zip:JSZip,sheetFile:string):Promise<
  };
  const height=(row:number,h:number)=>{xml=xml.replace(new RegExp(`<row\\b(?=[^>]*\\br="${row}")[^>]*>`),t=>put(put(t,'ht',String(h)),'customHeight','1'));};
  format('E1',18,false);height(1,30);
- const titleRow=area4?19:area2?17:18,headerRow=titleRow+1;
+ const titles=[...xml.matchAll(/<c\b[^>]*\br="A(\d+)"[^>]*(?<!\/)>[\s\S]*?<\/c>/g)].filter(m=>/<t[^>]*>Supplementary<\/t>/.test(m[0]));
+ if(titles.length!==1)throw Error('Expected one Supplementary title.');
+ const titleRow=Number(titles[0][1]),headerRow=titleRow+1;
+ const dynamic=titleRow!==18;
  merge(`A${titleRow}:J${titleRow}`);format(`A${titleRow}`,12,false);height(titleRow,24);
  for(let r=headerRow;r<=headerRow+14;r++){merge(`B${r}:C${r}`);format(`B${r}`,10,true);height(r,r===headerRow?30:36);}
  for(const r of [headerRow+15,headerRow+16]){merge(`A${r}:E${r}`);format(`A${r}`,11,true);height(r,32);}
- for(let r=7;r<=(area4?16:area2?14:15);r++){format(`B${r}`,10,true);height(r,30);}
+ for(let r=7;r<=titleRow-3;r++){format(`B${r}`,10,true);height(r,30);}
  const textRow=(text:string)=>{
-  const found=[...xml.matchAll(/<c\b[^>]*\br="A(\d+)"[^>]*>[\s\S]*?<\/c>/g)].find(m=>m[0].includes(text));
+  const found=[...xml.matchAll(/<c\b[^>]*\br="A(\d+)"[^>]*(?<!\/)>[\s\S]*?<\/c>/g)].find(m=>m[0].includes(text));
   return found?Number(found[1]):undefined;
  };
- const me=(area2||area4)?textRow('M&amp;E Work'):120;
+ const me=dynamic?textRow('M&amp;E Work'):120;
  if(me!==undefined){
-  const description=(area2||area4)?me+9:212;
+  const description=dynamic?me+9:212;
   for(const row of [description,description+1]){merge(`E${row}:H${row}`);format(`E${row}`,10,true);height(row,row===description?220:48);}
   merge(`E${me+8}:F${me+8}`);format(`E${me+8}`,10,true);height(me+8,100);
   format(`D${me+2}`,10,true);height(me+2,35);
  }
- const remarkRow=(area2||area4)?textRow('Remark:'):133;
+ const remarkRow=dynamic?textRow('Remark:'):133;
  if(remarkRow){format(`A${remarkRow}`,10,true);for(let r=remarkRow;r<=remarkRow+5;r++)height(r,60);}
  styles=styles.replace(/<fonts\b[^>]*>[\s\S]*?<\/fonts>/,`<fonts count="${fonts.length}">${fonts.join('')}</fonts>`).replace(/<cellXfs\b[^>]*>[\s\S]*?<\/cellXfs>/,`<cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs>`);
  zip.file(sheetFile,xml);zip.file('xl/styles.xml',styles);return new Set([sheetFile,'xl/styles.xml']);

@@ -188,7 +188,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
               className={`rounded-lg border px-3 py-3 text-left text-xs font-bold transition-colors ${selectedArea === area ? 'border-[#183b6b] bg-[#183b6b] text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-[#183b6b] hover:bg-slate-50'}`}
             >
               <span className="block text-base leading-none">Area {area}</span>
-              <span className={`mt-1 block text-[10px] font-medium ${selectedArea === area ? 'text-slate-200' : 'text-slate-500'}`}>Use Area {area} prompt recipe</span>
+              <span className={`mt-1 block text-[10px] font-medium ${selectedArea === area ? 'text-slate-200' : 'text-slate-500'}`}>{[1, 5, 6, 7, 8, 9, 10].includes(area) ? 'Test preview — sample review pending' : 'Use Area ' + area + ' prompt recipe'}</span>
             </button>
           ))}
         </div>
@@ -252,7 +252,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
           <p className="mt-1 break-words text-sm leading-6 text-red-800">{conversionError}</p>
           <p className="mt-2 text-xs leading-5 text-red-700">
             Use an .xlsx below 4 MB. A Gemini 503 means temporary service unavailability; it does not mean your
-            <code className="mx-1 rounded bg-red-100 px-1">GEMINI_API_KEY</code> is invalid. Reviewed Area 3 Project conversions use deterministic rules.
+            <code className="mx-1 rounded bg-red-100 px-1">GEMINI_API_KEY</code> is invalid. Project conversions check the source layout before applying the selected Area rules.
           </p>
         </div>
       )}
