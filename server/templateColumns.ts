@@ -21,7 +21,7 @@ export function translateColumnFormula(formula: string, delta: number) {
 
 /** Copy stored cell content and formatting, column width, and wholly contained
  * vertical merges. Other ZIP parts and the source column remain unchanged. */
-export function copyTemplateColumn(xml: string, operation: CopyColumnOperation): string {
+export function copyTemplateColumn(xml: string, operation: CopyColumnOperation, willRecalculate = false): string {
   const source = operation.sourceColumn.toUpperCase(), target = operation.targetColumn.toUpperCase();
   if (![source, target].every(c => /^[A-Z]{1,3}$/.test(c) && number(c) <= 16384) || source === target) throw new Error('Invalid column copy.');
   const src = number(source), dst = number(target);
@@ -46,7 +46,14 @@ export function copyTemplateColumn(xml: string, operation: CopyColumnOperation):
       if (/<f\b[^>]*\bt=["'](?:shared|array|dataTable)["']/.test(sourceCell)) throw new Error('Shared/array formula column copy requires coordinated editing.');
       let copied = sourceCell.replace(/\br=(["'])([A-Z]+)(\d+)\1/, (_m, q, _c, r) => `r=${q}${target}${r}${q}`);
       // Refuse formula copies until every dependent cache is recalculated.
-      if (/<f\b/.test(copied)) throw new Error('Formula column copy requires full recalculation.');
+      if (/<f\b/.test(copied)) {
+        if (!willRecalculate) throw new Error('Formula column copy requires full recalculation.');
+        copied = copied.replace(/(<f\b[^>]*>)([\s\S]*?)(<\/f>)/g, (_m, open, formula, close) => {
+          const decoded = formula.replace(/&(quot|apos|lt|gt|amp);/g, (_:string, key:string) => ({quot:'"',apos:"'",lt:'<',gt:'>',amp:'&'}[key]!));
+          const translated = translateColumnFormula(decoded, dst-src).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          return open + translated + close;
+        });
+      }
       kept.push(copied);
     }
     kept.sort((a, b) => number(attribute(a.slice(0, a.indexOf('>') + 1), 'r').replace(/\d+$/, '')) - number(attribute(b.slice(0, b.indexOf('>') + 1), 'r').replace(/\d+$/, '')));

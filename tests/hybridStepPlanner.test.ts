@@ -36,14 +36,16 @@ test('supplementary structure and totals compile exact documented coordinates',(
   assert.equal(totals.operations.find(p=>p.address==='J34')?.formula,'SUM(J20:J33)');
   assert.equal(planDeterministicStep(contextFor('A3-S009')),undefined);
 });
-test('unknown Areas and changed recipe wording fall back instead of reusing compiled rules',async()=>{
+test('changed Area 3 wording stops without Gemini while other Areas retain fallback',async()=>{
   const recipe=officialAreaCatalog[2];
   const context={recipe,step:{...recipe.steps[0],text:'Changed title'},customer,sheets:[],history:[]} as StepContext;
   assert.equal(planDeterministicStep(context),undefined);
   let calls=0;
   const planner=createHybridStepPlanner(async c=>{calls++;return {stepId:c.step.id,status:'needs_review',reason:'fixture fallback',operations:[]};});
-  assert.equal((await planner(context)).executor,'gemini');
-  assert.equal(calls,1);
+  assert.equal((await planner(context)).executor,'deterministic');
+  assert.equal(calls,0);
+  const other={...context,recipe:officialAreaCatalog[0],step:officialAreaCatalog[0].steps[0]};
+  assert.equal((await planner(other)).executor,'gemini');assert.equal(calls,1);
   assert.equal(planDeterministicStep({...context,recipe:officialAreaCatalog[0],step:officialAreaCatalog[0].steps[0]}),undefined);
 });
 test('unresolved prior steps do not spend Gemini requests on blocked downstream plans',async()=>{

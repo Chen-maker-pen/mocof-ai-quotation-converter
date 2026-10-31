@@ -86,7 +86,8 @@ export async function convertSupplierWorkbook(quote: Quote, originalFileName: st
       if (translated?.notes) item.notes = translated.notes;
     }))
   ));
-  const exchangeRateValue = quote.exchangeRate.rate || 0.652;
+  const exchangeRateValue = quote.exchangeRate.rate;
+  if(!Number.isFinite(exchangeRateValue)||exchangeRateValue<=0)throw new Error('Valid currency conversion rate required.');
   const updatedWorksheets = parsedXlsx.parsedWorksheets.map((ws) =>
     recalculateWorksheet(ws, exchangeRateValue, profile)
   );
@@ -135,7 +136,7 @@ export async function convertSupplierWorkbook(quote: Quote, originalFileName: st
   const sourceResult = await runSourceRecipe(buffer, originalFileName, areaToRun, {
     name: project?.customerName || '', address: project?.projectAddress || '',
     sqft: quote.sourceCustomerSqft, budget: quote.customerBudget, currency: quote.currency, quotationType: project?.quotationType,
-  }, recipeOptions);
+  }, {...recipeOptions,exchangeSnapshot:quote.exchangeRate});
   const templateRecipeNotes = ['Every official section was submitted in order to the step planner. Only validated changes were committed; unresolved operations remain visible in the prompt trace.'];
   const templatePatches = sourceResult.patches;
   quote.preservedTemplateWorkbook = sourceResult.preserved;
@@ -288,11 +289,12 @@ export async function createApp() {
   });
 
   // Create Project
-  app.post('/api/projects', (req, res) => {
+  app.post('/api/projects', async (req, res) => {
     const { name, customerName, customerPhone, customerEmail, projectAddress, currency } = req.body;
     const newProjectId = `proj-${Date.now()}`;
     const newQuoteId = `quote-${Date.now()}`;
-    const rates = createRateSnapshot(currency || 'MYR');
+    const rates = await createRateSnapshot(currency || 'MYR').catch(()=>null);
+    if(!rates)return res.status(503).json({error:'Live exchange rate unavailable. Please retry.'});
 
     const newQuote: Quote = {
       id: newQuoteId,
@@ -390,7 +392,7 @@ export async function createApp() {
       const input = req.body.projectData ? JSON.parse(req.body.projectData) : {};
       const newProjectId = `proj-${Date.now()}`;
       const newQuoteId = `quote-${Date.now()}`;
-      const rates = createRateSnapshot(input.currency || 'MYR');
+      const rates = await createRateSnapshot(input.currency || 'MYR');
       const newQuote: Quote = {
         id: newQuoteId, projectId: newProjectId, versionNumber: 1, versionLabel: 'v1.0-Initial', status: 'Processing',
         currency: input.currency || 'MYR', exchangeRate: rates, worksheets: [], supplementaryItems: [],
@@ -740,8 +742,8 @@ app.post('/api/exports/pdf', async (req, res) => {
 
   // Live Exchange Rates
   app.get('/api/exchange-rates', async (req, res) => {
-    const rates = await fetchLiveExchangeRates();
-    res.json(rates);
+    try { res.json(await fetchLiveExchangeRates()); }
+    catch { res.status(503).json({error:'Live exchange rate unavailable. Please retry.'}); }
   });
 
   // Reset Data to Seed

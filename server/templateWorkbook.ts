@@ -4,6 +4,7 @@ import path from 'node:path';
 import JSZip from 'jszip';
 import { insertTemplateRows, type InsertRowsOperation } from './templateRows.js';
 import { copyTemplateColumn, type CopyColumnOperation } from './templateColumns.js';
+import { evaluateWorkbookValue } from '../src/lib/formulaEvaluator.js';
 import { formatTemplateCells, type FormatCellsOperation } from './templateFormat.js';
 import type { PreservedTemplateWorkbook, CustomerWorkbookSheet } from '../src/types.js';
 
@@ -172,8 +173,21 @@ export async function createPreservedTemplateWorkbook(rawXlsx: Buffer, originalF
       continue;
     }
     const before = await zip.file(filename)!.async('string');
-    const after = patch.kind === 'copy_column' ? copyTemplateColumn(before, patch) : updateCell(before, patch);
+    const after = patch.kind === 'copy_column' ? copyTemplateColumn(before, patch, true) : updateCell(before, patch);
     zip.file(filename, after); modified.add(filename);
+    if (patch.kind === 'copy_column' && /<f\b/.test(after)) {
+      // Never publish copied formula caches from the source column. Evaluate
+      // the edited sheet against the complete workbook before returning it.
+      const model = await readTemplateWorkbook(await zip.generateAsync({type:'nodebuffer'}));
+      const sheet = model.find(s => s.name === patch.sheetName)!;
+      let recalculated = after;
+      for (const cell of Object.values(sheet.cells)) if (cell.formula) {
+        const value = evaluateWorkbookValue(sheet, cell.address, model);
+        if (value === undefined) throw new Error(`Cannot recalculate copied formula ${sheet.name}!${cell.address}.`);
+        recalculated = updateCell(recalculated, {sheetName: sheet.name, address: cell.address, formula: cell.formula, value});
+      }
+      zip.file(filename, recalculated);
+    }
   }
   for(const patch of normalized.filter(p=>p.kind==='replace_logo')) for(const name of await finishQuotationLayout(zip,paths.get(patch.sheetName)!))modified.add(name);
   const transformed = normalized.length ? await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }) : Buffer.from(rawXlsx);
