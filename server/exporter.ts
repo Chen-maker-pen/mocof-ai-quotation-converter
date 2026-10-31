@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { exportTemplate } from './templateExport.js';
+import {readTemplateWorkbook} from './templateWorkbook.js';
 import { Quote, ConversionProfile, Project } from '../src/types.js';
 
 /** Only the first, customer quotation sheet is printed. Source tabs remain in XLSX. */
@@ -52,12 +53,15 @@ export async function generateCustomerPdf(
   // quotation columns onto one page while allowing vertical pagination.
   const zip = await JSZip.loadAsync(workbook);
   await selectCustomerPrintSheet(zip);
-  for (const name of Object.keys(zip.files).filter(n=>/^xl\/worksheets\/sheet\d+\.xml$/.test(n))) {
+  // Resolve the logical customer sheet; merged sources can use combined.xml
+  // or nested worksheet paths instead of Excel's usual sheet1.xml.
+  for (const name of [(await readTemplateWorkbook(workbook))[0].id]) {
     let xml = await zip.file(name)!.async('string');
     if (!/<sheetPr\b/.test(xml)) xml=xml.replace(/(<worksheet\b[^>]*>)/,'$1<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>');
     else if (/<pageSetUpPr\b/.test(xml)) xml=xml.replace(/<pageSetUpPr\b[^>]*\/>/,'<pageSetUpPr fitToPage="1"/>');
     else xml=xml.replace('</sheetPr>','<pageSetUpPr fitToPage="1"/></sheetPr>');
-    xml=xml.replace(/<pageSetup\b[^>]*\/>/,tag=>tag.replace(/\s(?:scale|fitToWidth|fitToHeight)="[^"]*"/g,'').replace('/>',' fitToWidth="1" fitToHeight="0"/>'));
+    if (/<pageSetup\b/.test(xml)) xml=xml.replace(/<pageSetup\b[^>]*\/>/,tag=>tag.replace(/\s(?:scale|fitToWidth|fitToHeight)="[^"]*"/g,'').replace('/>',' fitToWidth="1" fitToHeight="0"/>'));
+    else xml=xml.replace(/(?=<(?:headerFooter|rowBreaks|colBreaks|drawing|legacyDrawing|extLst)\b|<\/worksheet>)/,'<pageSetup fitToWidth="1" fitToHeight="0"/>');
     zip.file(name,xml);
   }
   const fontName=process.platform==='darwin'?'Arial Unicode MS':'Noto Sans CJK SC';

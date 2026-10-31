@@ -14,7 +14,7 @@ for(let r=21+delta;r<=34+delta;r++)ops.push({sheetName:s.name,address:'E'+r,valu
 for(const range of [`F7:J${area+13}`,`F${area+17}:J${area+32}`,`H${layout.detailStart}:J${layout.detailEnd}`,'J3','I4'])ops.push({kind:'format_cells',sheetName:s.name,range,numberFormat:'"RM"#,##0.00'});
 for(const range of ['I2','I3'])ops.push({kind:'format_cells',sheetName:s.name,range,numberFormat:'0%'});
 const p=await createPreservedTemplateWorkbook(raw,'quotation.xlsx',ops),z=await JSZip.loadAsync(Buffer.from(p.transformedXlsxBase64,'base64'));
-let xml=await z.file('xl/worksheets/sheet1.xml')!.async('string');
+let xml=await z.file(s.id)!.async('string');
 // Keep source H and its dependencies; only its visual column is hidden.
 xml=xml.replace(/<col\b[^>]*\/>/g,t=>{
  const min=Number(/min="(\d+)"/.exec(t)?.[1]),max=Number(/max="(\d+)"/.exec(t)?.[1]);let out='';
@@ -54,7 +54,7 @@ xml=xml.replace(/<mergeCells\b[^>]*>([\s\S]*?)<\/mergeCells>/,(_,b)=>{
  const body=b+added.filter(r=>!b.includes(`ref="${r}"`)).map(r=>`<mergeCell ref="${r}"/>`).join('');
  return `<mergeCells count="${[...body.matchAll(/<mergeCell\b/g)].length}">${body}</mergeCells>`;
 });
-z.file('xl/worksheets/sheet1.xml',xml);const out=await z.generateAsync({type:'nodebuffer'});
+z.file(s.id,xml);const out=await z.generateAsync({type:'nodebuffer'});
 const after=await readTemplateWorkbook(out);
 for(const a of ['F','G','I','J'].map(col=>col+(area+32)))assert.deepEqual(after[0].cells[a],s.cells[a]);
 for(let i=1;i<before.length;i++)assert.deepEqual(after[i],before[i]);

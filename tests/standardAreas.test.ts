@@ -52,3 +52,24 @@ for(const area of standardAreas)test(`Area ${area} executes the complete officia
  const a=await JSZip.loadAsync(raw),b=await JSZip.loadAsync(bytes);
  for(const path of Object.keys(a.files).filter(x=>!a.files[x].dir&&(x.startsWith('xl/media/')||x==='xl/worksheets/sheet2.xml')))assert.deepEqual(await b.file(path)!.async('nodebuffer'),await a.file(path)!.async('nodebuffer'));
 });
+
+test('combined six-room source preserves all original tabs and media while completing the recipe', {skip: !process.env.MOCOF_HANSON_COMBINED_XLSX}, async()=>{
+ const fs=await import('node:fs/promises');
+ const raw=await fs.readFile(process.env.MOCOF_HANSON_COMBINED_XLSX!);
+ const source=await readTemplateWorkbook(raw),sourceLayout=standardAreaStructure(source[0],6);
+ assert.notEqual(source[0].id,'xl/worksheets/sheet1.xml');
+ const result=await runSourceRecipe(raw,'combined-test.xlsx',6,customer,{exchangeSnapshot:rate});
+ assert.deepEqual(result.executions.filter(x=>!['applied','skipped'].includes(x.status)).map(x=>[x.stepId,x.result]),[]);
+ assert.equal(result.executions.length,officialAreaCatalog.find(x=>x.area===6)!.steps.length);
+ const bytes=Buffer.from(result.preserved.transformedXlsxBase64,'base64'),out=await readTemplateWorkbook(bytes);
+ const layout=standardAreaStructure(out[0],6,true);
+ assert.deepEqual(layout.rooms.map(x=>x.name),sourceLayout.rooms.map(x=>x.name));
+ const originalTotal=sourceLayout.rooms.reduce((sum,r)=>sum+Number(source[0].cells['H'+r.row].value),0);
+ assert.ok(Math.abs(Number(out[0].cells.I19.value)-originalTotal*.6)<1e-6);
+ assert.ok(Math.abs(Number(out[0].cells.J38.value)-(originalTotal*.6*.9+126960))<1e-6);
+ for(const [i,room]of layout.rooms.entries())assert.ok(Math.abs(Number(out[0].cells['I'+room.row].value)-Number(source[0].cells['H'+sourceLayout.rooms[i].row].value)*.6)<1e-6);
+ const a=await JSZip.loadAsync(raw),b=await JSZip.loadAsync(bytes);
+ for(const s of source.slice(1))assert.deepEqual(await b.file(s.id)!.async('nodebuffer'),await a.file(s.id)!.async('nodebuffer'),s.name);
+ for(const path of Object.keys(a.files).filter(x=>!a.files[x].dir&&/\/media\//.test(x)))assert.deepEqual(await b.file(path)!.async('nodebuffer'),await a.file(path)!.async('nodebuffer'),path);
+ assert.match(await b.file(source[0].id)!.async('string'),/<col\b[^>]*min="8"[^>]*hidden="1"/);
+});
