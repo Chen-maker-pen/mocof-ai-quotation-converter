@@ -12,6 +12,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { exportTemplate } from './templateExport.js';
 import {readTemplateWorkbook} from './templateWorkbook.js';
+import {paginateQuotation} from './pdfPagination.js';
 import { Quote, ConversionProfile, Project } from '../src/types.js';
 
 /** Only the first, customer quotation sheet is printed. Source tabs remain in XLSX. */
@@ -62,7 +63,8 @@ export async function generateCustomerPdf(
     else xml=xml.replace('</sheetPr>','<pageSetUpPr fitToPage="1"/></sheetPr>');
     if (/<pageSetup\b/.test(xml)) xml=xml.replace(/<pageSetup\b[^>]*\/>/,tag=>tag.replace(/\s(?:scale|fitToWidth|fitToHeight)="[^"]*"/g,'').replace('/>',' fitToWidth="1" fitToHeight="0"/>'));
     else xml=xml.replace(/(?=<(?:headerFooter|rowBreaks|colBreaks|drawing|legacyDrawing|extLst)\b|<\/worksheet>)/,'<pageSetup fitToWidth="1" fitToHeight="0"/>');
-    zip.file(name,xml);
+    xml=xml.replace(/<pageSetup\b[^>]*\/>/,tag=>tag.replace(/\s(?:paperSize|orientation)="[^"]*"/g,'').replace('/>',' paperSize="9" orientation="portrait"/>'));
+    zip.file(name,paginateQuotation(xml));
   }
   const fontName=process.platform==='darwin'?'Arial Unicode MS':'Noto Sans CJK SC';
   const printStyles=await zip.file('xl/styles.xml')!.async('string');
