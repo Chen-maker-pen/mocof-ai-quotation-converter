@@ -1,3 +1,4 @@
+import {addItemSummary} from './itemSummary.js';
 import {standardAreas,planStandardArea} from './standardAreaPlanner.js';
 import {standardAreaStructure} from './standardAreaStructure.js';
 import {finishStandardArea} from './standardAreaFinalize.js';
@@ -39,7 +40,8 @@ export async function runSourceRecipe(raw: Buffer, filename: string, area: numbe
   if(standardAreas.includes(area)){
     const result=await executeSequentialRecipe(raw,filename,area,customer,{...options,planner:async c=>planStandardArea(c)});
     if(result.executions.every(e=>e.status==='applied'||e.status==='skipped')){
-      const bytes=await finishStandardArea(Buffer.from(result.preserved.transformedXlsxBase64,'base64'),area,exchangeSnapshot,factors);
+      let bytes=await finishStandardArea(Buffer.from(result.preserved.transformedXlsxBase64,'base64'),area,exchangeSnapshot,factors);
+      bytes=await addItemSummary(bytes,area);
       result.preserved.transformedXlsxBase64=bytes.toString('base64');
       result.preserved.transformedSha256=createHash('sha256').update(bytes).digest('hex');
       result.workbookSheets=await readTemplateWorkbook(bytes);
@@ -53,6 +55,7 @@ export async function runSourceRecipe(raw: Buffer, filename: string, area: numbe
     if(result.executions.every(e=>e.status==='applied'||e.status==='skipped')){
       let bytes=await layoutArea4(await correctArea4Pricing(Buffer.from(result.preserved.transformedXlsxBase64,'base64')));
       bytes=await applyCnyToMyr(bytes,area,exchangeSnapshot,factors);
+      bytes=await addItemSummary(bytes,area);
       result.preserved.transformedXlsxBase64=bytes.toString('base64');result.preserved.transformedSha256=createHash('sha256').update(bytes).digest('hex');
       result.workbookSheets=await readTemplateWorkbook(bytes);
     }
@@ -65,6 +68,7 @@ export async function runSourceRecipe(raw: Buffer, filename: string, area: numbe
     if(result.executions.every(e=>e.status==='applied'||e.status==='skipped')){
       let bytes=await layoutArea2(await correctArea2Packages(Buffer.from(result.preserved.transformedXlsxBase64,'base64')));
       bytes=await applyCnyToMyr(bytes,area,exchangeSnapshot,factors);
+      bytes=await addItemSummary(bytes,area);
       result.preserved.transformedXlsxBase64=bytes.toString('base64');result.preserved.transformedSha256=createHash('sha256').update(bytes).digest('hex');
       result.workbookSheets=await readTemplateWorkbook(bytes);
     }
@@ -74,6 +78,7 @@ export async function runSourceRecipe(raw: Buffer, filename: string, area: numbe
   if(area===3 && result.executions.every(e=>e.status==='applied'||e.status==='skipped')){
     let bytes=await correctArea3(Buffer.from(result.preserved.transformedXlsxBase64,'base64'),filename);
     bytes=await applyCnyToMyr(bytes,area,exchangeSnapshot,factors);
+      bytes=await addItemSummary(bytes,area);
       result.preserved.transformedXlsxBase64=bytes.toString('base64');result.preserved.transformedSha256=createHash('sha256').update(bytes).digest('hex');
     result.workbookSheets=await readTemplateWorkbook(bytes);
   }
