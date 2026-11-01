@@ -21,6 +21,8 @@ export interface ConversionCustomerDetails {
   customerAddress: string;
   customerBudget: number;
   customerSqft: number;
+  payableFactor: number;
+  supplementaryFactor: number;
   currency: CurrencyCode;
 }
 
@@ -55,6 +57,8 @@ export const UploadView: React.FC<UploadViewProps> = ({
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerBudget, setCustomerBudget] = useState('');
   const [customerSqft, setCustomerSqft] = useState('');
+  const [payableFactor,setPayableFactor]=useState('0.9');
+  const [supplementaryFactor,setSupplementaryFactor]=useState('0.8');
   const [currency, setCurrency] = useState<CurrencyCode>('MYR');
   const [dragActive, setDragActive] = useState<boolean>(false);
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -92,6 +96,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
   };
 
   const startConversion = async (fileToUse?: File) => {
+    if([payableFactor,supplementaryFactor].some(v=>!v.trim()||!Number.isFinite(Number(v))||Number(v)<0||Number(v)>1)){alert('Enter factors from 0 to 1. For example, 0.9 means pay 90%.');return;}
     const sqft = Number(customerSqft);
     const budget = Number(customerBudget);
     if (!customerName.trim() || !customerAddress.trim()) {
@@ -113,6 +118,8 @@ export const UploadView: React.FC<UploadViewProps> = ({
         customerAddress: customerAddress.trim(),
         customerBudget: budget,
         customerSqft: sqft,
+        payableFactor:Number(payableFactor),
+        supplementaryFactor:Number(supplementaryFactor),
         currency,
       });
     } finally {
@@ -163,6 +170,15 @@ export const UploadView: React.FC<UploadViewProps> = ({
             <option value="residential">Residential — apply Area design fee rules</option>
           </select>
         </label>
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="text-xs font-bold text-slate-700">Payable factor
+            <input type="number" min="0" max="1" step="0.01" value={payableFactor} onChange={e=>setPayableFactor(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          </label>
+          <label className="text-xs font-bold text-slate-700">Supplementary factor
+            <input type="number" min="0" max="1" step="0.01" value={supplementaryFactor} onChange={e=>setSupplementaryFactor(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-slate-600">After Price = Before Price × factor. 0.9 means pay 90%; 1 means no discount.</p>
         <label htmlFor="customer-sqft" className="mt-3 block text-xs font-bold text-slate-700">Customer home sqft
           <input id="customer-sqft" type="number" min="1" step="0.01" inputMode="decimal" value={customerSqft} onChange={(event) => setCustomerSqft(event.target.value)} placeholder="Enter customer sqft" className="mt-1.5 w-full max-w-sm rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-[#183b6b] focus:ring-2 focus:ring-[#183b6b]/15" />
         </label>

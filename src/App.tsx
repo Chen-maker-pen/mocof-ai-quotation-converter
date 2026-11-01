@@ -158,6 +158,8 @@ export default function App() {
         customerEmail: '',
         projectAddress: details.customerAddress,
         customerBudget: details.customerBudget,
+        payableFactor:details.payableFactor,
+        supplementaryFactor:details.supplementaryFactor,
         quotationType: details.quotationType,
         currency: details.currency,
         selectedArea,

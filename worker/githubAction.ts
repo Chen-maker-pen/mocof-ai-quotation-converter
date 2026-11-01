@@ -106,6 +106,7 @@ async function main() {
       Number(job.input.projectData.customerSqft),
       Number(job.input.projectData.customerBudget),
       {
+        pricingFactors: {payableFactor:job.input.projectData.payableFactor,supplementaryFactor:job.input.projectData.supplementaryFactor},
         resume: await readRecipeCheckpoint(jobId) || undefined,
         checkpoint: (checkpoint, progress) => saveRecipeCheckpoint(jobId, checkpoint, progress),
         progress: async (progress) => { await updatePersistentConversionJob(jobId, { progress }); },

@@ -23,5 +23,8 @@ for(const area of [2,3])test(`Area ${area}: CNY source converts once, discount f
  assert.equal(sheet.cells['F'+grand].value,49900);assert.equal(sheet.cells['I'+detail].value,1219.2);
  const again=(await readTemplateWorkbook(await applyCnyToMyr(out,area,snapshot)))[0];assert.equal(again.cells.I8.value,1219.2);
  sheet.cells.I2.value=.8;assert.ok(Math.abs(Number(evaluateWorkbookValue(sheet,'J8',sheets))-975.36)<1e-8);
+ const custom=(await readTemplateWorkbook(await applyCnyToMyr(raw,area,snapshot,{payableFactor:.6,supplementaryFactor:.5})))[0];
+ assert.equal(custom.cells.I8.value,1219.2);assert.ok(Math.abs(Number(custom.cells.J8.value)-731.52)<1e-8);
+ assert.equal(custom.cells.I3.value,.5);
  await assert.rejects(applyCnyToMyr(raw,area,{...snapshot,rate:0}));
 });

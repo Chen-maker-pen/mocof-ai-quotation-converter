@@ -10,6 +10,8 @@ export interface ConversionJobInput {
     selectedArea: number;
     customerSqft: number;
     customerBudget: number;
+    payableFactor?: number;
+    supplementaryFactor?: number;
     currency?: CurrencyCode;
   };
   source: {

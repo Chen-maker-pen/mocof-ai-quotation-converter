@@ -4,7 +4,9 @@ import {area2Structure} from './area2Structure.js';
 import {readTemplateWorkbook,createPreservedTemplateWorkbook} from './templateWorkbook.js';
 import {evaluateWorkbookValue} from '../src/lib/formulaEvaluator.js';
 import type {ExchangeRateSnapshot} from '../src/types.js';
-export async function applyCnyToMyr(raw:Buffer,area:number,rate:ExchangeRateSnapshot){
+import {validatePricingFactors,type PricingFactors} from './pricingFactors.js';
+export async function applyCnyToMyr(raw:Buffer,area:number,rate:ExchangeRateSnapshot,factors:PricingFactors={}){
+ validatePricingFactors(factors);
  if(!Number.isInteger(area)||area<1||area>10)throw Error('Currency conversion for this Area requires template review.');
  if(rate.sourceCurrency!=='CNY'||rate.targetCurrency!=='MYR'||!Number.isFinite(rate.rate)||rate.rate<=0||!rate.source||!rate.rateDate)throw Error('A verified CNY to MYR rate snapshot is required.');
  const sheets=await readTemplateWorkbook(raw),s=sheets[0];
@@ -15,6 +17,8 @@ export async function applyCnyToMyr(raw:Buffer,area:number,rate:ExchangeRateSnap
  const patches:any[]=[];
  const set=(address:string,value:string|number,formula?:string)=>{s.cells[address]={...s.cells[address],address,row:Number(address.replace(/\D/g,'')),column:address.charCodeAt(0)-64,value,formula};patches.push({sheetName:s.name,address,value,formula});};
  set('H2',rate.rate);
+ if(factors.payableFactor!==undefined)set('I2',factors.payableFactor);
+ if(factors.supplementaryFactor!==undefined)set('I3',factors.supplementaryFactor);
  for(let row=start;row<=end;row++)if(typeof s.cells['H'+row]?.value==='number')set('I'+row,0,`H${row}*$H$2`);
  for(let row=7;row<=area+6;row++)set('I'+row,0,`H${row}*$H$2`);
  // MYR package/supplementary rates are intentionally not converted.

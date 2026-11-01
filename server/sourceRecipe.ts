@@ -26,8 +26,10 @@ export const approvedArea3Decisions = [
  'Use the exact room names and H7-H10 positions specified in the prompt.',
  'Repair malformed formula syntax: Before Price = Software Price * H$2; After Price = Before Price * I$2.',
 ];
-export type SourceRecipeOptions = Partial<Parameters<typeof executeSequentialRecipe>[4]> & {exchangeSnapshot?:ExchangeRateSnapshot};
+import {validatePricingFactors,type PricingFactors} from './pricingFactors.js';
+export type SourceRecipeOptions = Partial<Parameters<typeof executeSequentialRecipe>[4]> & {exchangeSnapshot?:ExchangeRateSnapshot; pricingFactors?:PricingFactors};
 export async function runSourceRecipe(raw: Buffer, filename: string, area: number, customer: RecipeCustomer, options: SourceRecipeOptions = {}) {
+  const factors=validatePricingFactors(options.pricingFactors||{});
   if(!Number.isInteger(area)||area<1||area>10)throw new Error('Choose Area 1 through Area 10.');
   if(standardAreas.includes(area)){
     if(customer.quotationType!=='project')throw new Error('This Area currently supports Project quotations only.');
@@ -37,7 +39,7 @@ export async function runSourceRecipe(raw: Buffer, filename: string, area: numbe
   if(standardAreas.includes(area)){
     const result=await executeSequentialRecipe(raw,filename,area,customer,{...options,planner:async c=>planStandardArea(c)});
     if(result.executions.every(e=>e.status==='applied'||e.status==='skipped')){
-      const bytes=await finishStandardArea(Buffer.from(result.preserved.transformedXlsxBase64,'base64'),area,exchangeSnapshot);
+      const bytes=await finishStandardArea(Buffer.from(result.preserved.transformedXlsxBase64,'base64'),area,exchangeSnapshot,factors);
       result.preserved.transformedXlsxBase64=bytes.toString('base64');
       result.preserved.transformedSha256=createHash('sha256').update(bytes).digest('hex');
       result.workbookSheets=await readTemplateWorkbook(bytes);
@@ -50,7 +52,7 @@ export async function runSourceRecipe(raw: Buffer, filename: string, area: numbe
     const result=await executeSequentialRecipe(raw,filename,area,customer,{...options,planner:async c=>planArea4(c)});
     if(result.executions.every(e=>e.status==='applied'||e.status==='skipped')){
       let bytes=await layoutArea4(await correctArea4Pricing(Buffer.from(result.preserved.transformedXlsxBase64,'base64')));
-      bytes=await applyCnyToMyr(bytes,area,exchangeSnapshot);
+      bytes=await applyCnyToMyr(bytes,area,exchangeSnapshot,factors);
       result.preserved.transformedXlsxBase64=bytes.toString('base64');result.preserved.transformedSha256=createHash('sha256').update(bytes).digest('hex');
       result.workbookSheets=await readTemplateWorkbook(bytes);
     }
@@ -62,7 +64,7 @@ export async function runSourceRecipe(raw: Buffer, filename: string, area: numbe
     const result=await executeSequentialRecipe(normalized,filename,area,customer,{...options,planner:async c=>planArea2(c,{correctGrandTotalRows:true,useYangRooms:true,reviewedPricing:true})});
     if(result.executions.every(e=>e.status==='applied'||e.status==='skipped')){
       let bytes=await layoutArea2(await correctArea2Packages(Buffer.from(result.preserved.transformedXlsxBase64,'base64')));
-      bytes=await applyCnyToMyr(bytes,area,exchangeSnapshot);
+      bytes=await applyCnyToMyr(bytes,area,exchangeSnapshot,factors);
       result.preserved.transformedXlsxBase64=bytes.toString('base64');result.preserved.transformedSha256=createHash('sha256').update(bytes).digest('hex');
       result.workbookSheets=await readTemplateWorkbook(bytes);
     }
@@ -71,7 +73,7 @@ export async function runSourceRecipe(raw: Buffer, filename: string, area: numbe
   const result=await executeSequentialRecipe(raw, filename, area, customer, { ...options, userDecisions: options.userDecisions || (area===3 ? approvedArea3Decisions : []), planner: options.planner || planHybridStep });
   if(area===3 && result.executions.every(e=>e.status==='applied'||e.status==='skipped')){
     let bytes=await correctArea3(Buffer.from(result.preserved.transformedXlsxBase64,'base64'),filename);
-    bytes=await applyCnyToMyr(bytes,area,exchangeSnapshot);
+    bytes=await applyCnyToMyr(bytes,area,exchangeSnapshot,factors);
       result.preserved.transformedXlsxBase64=bytes.toString('base64');result.preserved.transformedSha256=createHash('sha256').update(bytes).digest('hex');
     result.workbookSheets=await readTemplateWorkbook(bytes);
   }

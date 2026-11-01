@@ -73,3 +73,14 @@ test('combined six-room source preserves all original tabs and media while compl
  for(const path of Object.keys(a.files).filter(x=>!a.files[x].dir&&/\/media\//.test(x)))assert.deepEqual(await b.file(path)!.async('nodebuffer'),await a.file(path)!.async('nodebuffer'),path);
  assert.match(await b.file(source[0].id)!.async('string'),/<col\b[^>]*min="8"[^>]*hidden="1"/);
 });
+
+test('customer factors override recipe defaults and recalculate final Area6 totals',async()=>{
+ const raw=await fixture(6);
+ const result=await runSourceRecipe(raw,'any-six-room.xlsx',6,customer,{exchangeSnapshot:rate,pricingFactors:{payableFactor:.6,supplementaryFactor:.5}});
+ const s=(await readTemplateWorkbook(Buffer.from(result.preserved.transformedXlsxBase64,'base64')))[0];
+ assert.equal(s.cells.I2.value,.6);assert.equal(s.cells.I3.value,.5);
+ assert.equal(s.cells.I19.value,1260);
+ assert.ok(Math.abs(Number(s.cells.J19.value)-756)<1e-6);
+ assert.equal(s.cells.J37.value,79350);
+ assert.equal(s.cells.J38.value,80106);
+});

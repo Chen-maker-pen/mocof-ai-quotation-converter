@@ -12,6 +12,8 @@ import {
 } from '../types.js';
 
 export interface ConversionJobProjectData extends Partial<Project> {
+  payableFactor?: number;
+  supplementaryFactor?: number;
   selectedArea: number;
   customerSqft: number;
   customerBudget: number;
