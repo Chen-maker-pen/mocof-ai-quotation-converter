@@ -8,6 +8,14 @@ import { ConversionProfile, QuoteItem, ExceptionItem } from '../src/types.js';
 import { getDocumentedAreaPrompts } from './documentedPrompts.js';
 import { getGeminiModel, geminiFailure, requireExtractionItems } from './geminiConfig.js';
 
+import { withGeminiRetries } from './geminiRetry.js';
+
+function generateContent(ai: GoogleGenAI, params: Parameters<GoogleGenAI['models']['generateContent']>[0]) {
+  return withGeminiRetries(() => ai.models.generateContent(params), {
+    attempts: process.env.MOCOF_BACKGROUND_WORKER === 'true' ? 3 : 1,
+  });
+}
+
 let aiClient: GoogleGenAI | null = null;
 
 // Long-running workers can wait/retry. Synchronous requests keep their short
@@ -24,8 +32,7 @@ function getGeminiClient(): GoogleGenAI | null {
           'User-Agent': 'aistudio-build',
         },
         timeout: GEMINI_REQUEST_TIMEOUT_MS,
-        // Retries are reserved for the long-running worker.
-        retryOptions: { attempts: process.env.MOCOF_BACKGROUND_WORKER === 'true' ? 3 : 1 },
+        // Retry externally: SDK retryOptions discards HTTP status on failures.
       },
     });
   }
@@ -76,7 +83,7 @@ export async function createTemplateRecipeTransactions(
   const ai = getGeminiClient();
   if (!ai) throw new Error('Template recipe execution requires GEMINI_API_KEY.');
   const allowed = new Set(cells.map((cell) => `${cell.sheetName}::${cell.address}`.toUpperCase()));
-  const response = await ai.models.generateContent({
+  const response = await generateContent(ai, {
     model: GEMINI_MODEL,
     contents: JSON.stringify({
       task: 'Execute every listed MOCOF Area prompt in the provided order against a cloned Chinese supplier XLSX template.',
@@ -136,7 +143,7 @@ export async function createWorkbookPromptTransactions(
   const ai = getGeminiClient();
   if (!ai) throw new Error('Applying natural-language prompts requires GEMINI_API_KEY. Add it in Vercel, then redeploy.');
 
-  const response = await ai.models.generateContent({
+  const response = await generateContent(ai, {
     model: GEMINI_MODEL,
     contents: JSON.stringify({
       task: 'Apply boss instructions to the existing MOCOF customer quotation spreadsheet.',
@@ -203,7 +210,7 @@ export async function extractPdfQuotation(buffer: Buffer): Promise<PdfQuotationE
     throw new Error('PDF conversion requires GEMINI_API_KEY. Add the key, redeploy/restart the app, then upload the PDF again. XLSX conversion can still use the deterministic parser without an API key.');
   }
 
-  const response = await ai.models.generateContent({
+  const response = await generateContent(ai, {
     model: GEMINI_MODEL,
     contents: [{
       role: 'user',
@@ -297,7 +304,7 @@ export async function processAiExtractionAndConversion(
       sourceProductRows: rawChineseRows.slice(0, 600),
     };
 
-    const response = await ai.models.generateContent({
+    const response = await generateContent(ai, {
       model: GEMINI_MODEL,
       contents: JSON.stringify(jsonPrompt),
       config: {

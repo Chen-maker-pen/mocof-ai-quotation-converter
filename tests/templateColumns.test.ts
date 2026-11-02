@@ -32,3 +32,19 @@ for (const [name, filename] of [['Fang', process.env.MOCOF_FANG_XLSX], ['Yang', 
       assert.deepEqual(await entry.async('nodebuffer'), await saved.file(n)!.async('nodebuffer'), n);
   });
 }
+
+test('formula columns translate relative references and recalculate stale caches before return', async () => {
+  const z = new JSZip();
+  z.file('xl/workbook.xml','<workbook><sheets><sheet name="Source" r:id="r1"/></sheets></workbook>');
+  z.file('xl/_rels/workbook.xml.rels','<Relationships><Relationship Id="r1" Target="worksheets/combined.xml" Type="x/worksheet"/></Relationships>');
+  z.file('xl/worksheets/combined.xml','<worksheet><sheetData><row r="1"><c r="A1"><v>2</v></c><c r="B1"><v>5</v></c><c r="H1"><f>A1+$A$1</f><v>999</v></c></row><row r="2"><c r="H2"><f>IF(A1=2,&quot;A1&quot;,&quot;B1&quot;)</f><v>999</v></c></row></sheetData></worksheet>');
+  z.file('xl/styles.xml','<styleSheet/>');
+  const raw=await z.generateAsync({type:'nodebuffer'});
+  const op={kind:'copy_column' as const,sheetName:'Source',sourceColumn:'H',targetColumn:'I'};
+  const result=await createPreservedTemplateWorkbook(raw,'formula.xlsx',[op]);
+  const s=(await readTemplateWorkbook(Buffer.from(result.transformedXlsxBase64,'base64')))[0];
+  assert.equal(s.cells.H1.value,4);assert.equal(s.cells.I1.formula,'B1+$A$1');assert.equal(s.cells.I1.value,7);
+  assert.equal(s.cells.I2.formula,'IF(B1=2,"A1","B1")');assert.equal(s.cells.I2.value,'B1');
+  z.file('xl/worksheets/combined.xml','<worksheet><sheetData><row r="1"><c r="H1"><f>UNKNOWN(A1)</f><v>999</v></c></row></sheetData></worksheet>');
+  await assert.rejects(createPreservedTemplateWorkbook(await z.generateAsync({type:'nodebuffer'}),'bad.xlsx',[op]),/Cannot recalculate/);
+});

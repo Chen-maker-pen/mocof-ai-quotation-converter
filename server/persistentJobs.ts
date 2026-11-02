@@ -10,6 +10,8 @@ export interface ConversionJobInput {
     selectedArea: number;
     customerSqft: number;
     customerBudget: number;
+    payableFactor?: number;
+    supplementaryFactor?: number;
     currency?: CurrencyCode;
   };
   source: {
@@ -25,6 +27,7 @@ export interface ConversionJobInput {
  * depends on Vercel's ephemeral filesystem or in-memory database.
  */
 export interface PersistentConversionJob {
+  exchangeSnapshot?: import('../src/types.js').ExchangeRateSnapshot;
   id: string;
   status: ConversionJobStatus;
   createdAt: string;

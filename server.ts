@@ -1,5 +1,7 @@
+import {validateAreaSelection} from './server/areaSelection.js';
 import 'dotenv/config';
 import {resumePersistentConversionJob, browserConversionResult, readJobExport} from './server/persistentJobs.js';
+import {validatePricingFactors} from './server/pricingFactors.js';
 import { runSourceRecipe, type SourceRecipeOptions } from './server/sourceRecipe.js';
 import { officialAreaCatalog } from './server/officialAreaCatalog.js';
 import { exportTemplate } from './server/templateExport.js';
@@ -86,7 +88,8 @@ export async function convertSupplierWorkbook(quote: Quote, originalFileName: st
       if (translated?.notes) item.notes = translated.notes;
     }))
   ));
-  const exchangeRateValue = quote.exchangeRate.rate || 0.652;
+  const exchangeRateValue = quote.exchangeRate.rate;
+  if(!Number.isFinite(exchangeRateValue)||exchangeRateValue<=0)throw new Error('Valid currency conversion rate required.');
   const updatedWorksheets = parsedXlsx.parsedWorksheets.map((ws) =>
     recalculateWorksheet(ws, exchangeRateValue, profile)
   );
@@ -135,7 +138,7 @@ export async function convertSupplierWorkbook(quote: Quote, originalFileName: st
   const sourceResult = await runSourceRecipe(buffer, originalFileName, areaToRun, {
     name: project?.customerName || '', address: project?.projectAddress || '',
     sqft: quote.sourceCustomerSqft, budget: quote.customerBudget, currency: quote.currency, quotationType: project?.quotationType,
-  }, recipeOptions);
+  }, {...recipeOptions,exchangeSnapshot:quote.exchangeRate});
   const templateRecipeNotes = ['Every official section was submitted in order to the step planner. Only validated changes were committed; unresolved operations remain visible in the prompt trace.'];
   const templatePatches = sourceResult.patches;
   quote.preservedTemplateWorkbook = sourceResult.preserved;
@@ -218,9 +221,12 @@ export async function createApp() {
       if (!req.file) return res.status(400).json({ error: 'Choose the original Chinese supplier XLSX file first.' });
       if (!/\.xlsx$/i.test(req.file.originalname) || req.file.buffer.subarray(0, 2).toString() !== 'PK') return res.status(400).json({ error: 'Source-preserving conversion requires a valid XLSX file.' });
       const input = req.body.projectData ? JSON.parse(req.body.projectData) : {};
+      validatePricingFactors(input);
       const selectedArea = Number(input.selectedArea);
       if (!String(input.customerName || '').trim() || !String(input.projectAddress || '').trim() || !Number.isFinite(Number(input.customerSqft)) || Number(input.customerSqft) <= 0 || !Number.isFinite(Number(input.customerBudget)) || Number(input.customerBudget) < 0) return res.status(400).json({ error: 'Customer name, address, positive sqft and nonnegative budget are required.' });
       if (!Number.isInteger(selectedArea) || selectedArea < 1 || selectedArea > 10) return res.status(400).json({ error: 'Choose Area 1–10 before starting the conversion job.' });
+      try { await validateAreaSelection(req.file.buffer, selectedArea); }
+      catch (error: any) { return res.status(400).json({error: error.message}); }
       const job = await createPersistentConversionJob(req.file.buffer, req.file.originalname, req.file.mimetype, {
         ...input, selectedArea, customerSqft: Number(input.customerSqft), customerBudget: Number(input.customerBudget),
       });
@@ -288,11 +294,12 @@ export async function createApp() {
   });
 
   // Create Project
-  app.post('/api/projects', (req, res) => {
+  app.post('/api/projects', async (req, res) => {
     const { name, customerName, customerPhone, customerEmail, projectAddress, currency } = req.body;
     const newProjectId = `proj-${Date.now()}`;
     const newQuoteId = `quote-${Date.now()}`;
-    const rates = createRateSnapshot(currency || 'MYR');
+    const rates = await createRateSnapshot(currency || 'MYR').catch(()=>null);
+    if(!rates)return res.status(503).json({error:'Live exchange rate unavailable. Please retry.'});
 
     const newQuote: Quote = {
       id: newQuoteId,
@@ -372,7 +379,7 @@ export async function createApp() {
           error: 'Please choose the original Chinese supplier XLSX file before starting conversion.',
         });
       }
-      res.json(await convertSupplierWorkbook(quote, req.file.originalname, req.file.buffer, Number(req.body?.selectedArea), Number(req.body?.customerSqft), Number(req.body?.customerBudget)));
+      res.json(await convertSupplierWorkbook(quote, req.file.originalname, req.file.buffer, Number(req.body?.selectedArea), Number(req.body?.customerSqft), Number(req.body?.customerBudget), {pricingFactors:validatePricingFactors(req.body || {})}));
     } catch (err: any) {
       console.error('Conversion endpoint error:', err);
       res.status(500).json({ error: err.message || 'Conversion failed' });
@@ -390,7 +397,7 @@ export async function createApp() {
       const input = req.body.projectData ? JSON.parse(req.body.projectData) : {};
       const newProjectId = `proj-${Date.now()}`;
       const newQuoteId = `quote-${Date.now()}`;
-      const rates = createRateSnapshot(input.currency || 'MYR');
+      const rates = await createRateSnapshot(input.currency || 'MYR');
       const newQuote: Quote = {
         id: newQuoteId, projectId: newProjectId, versionNumber: 1, versionLabel: 'v1.0-Initial', status: 'Processing',
         currency: input.currency || 'MYR', exchangeRate: rates, worksheets: [], supplementaryItems: [],
@@ -403,7 +410,7 @@ export async function createApp() {
       db.createProject(newProject);
       db.saveQuote(newQuote);
       db.addAuditLog({ projectId: newProjectId, quoteId: newQuoteId, action: 'PROJECT_CREATED', performedBy: 'User', details: `Created project ${newProject.name} (${newProject.quotationNumber}).` });
-      res.json(await convertSupplierWorkbook(newQuote, req.file.originalname, req.file.buffer, Number(input.selectedArea), Number(input.customerSqft), Number(input.customerBudget)));
+      res.json(await convertSupplierWorkbook(newQuote, req.file.originalname, req.file.buffer, Number(input.selectedArea), Number(input.customerSqft), Number(input.customerBudget), {pricingFactors:validatePricingFactors(input)}));
     } catch (err: any) {
       console.error('One-step conversion endpoint error:', err);
       res.status(500).json({ error: err.message || 'Conversion failed' });
@@ -740,8 +747,8 @@ app.post('/api/exports/pdf', async (req, res) => {
 
   // Live Exchange Rates
   app.get('/api/exchange-rates', async (req, res) => {
-    const rates = await fetchLiveExchangeRates();
-    res.json(rates);
+    try { res.json(await fetchLiveExchangeRates()); }
+    catch { res.status(503).json({error:'Live exchange rate unavailable. Please retry.'}); }
   });
 
   // Reset Data to Seed

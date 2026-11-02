@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import JSZip from 'jszip';
 import { createPreservedTemplateWorkbook, readTemplateWorkbook } from '../server/templateWorkbook.js';
-import { runSourceRecipe } from '../server/sourceRecipe.js';
+import { executeSequentialRecipe } from '../server/sequentialRecipe.js';
 
 async function fixture() {
   const zip = new JSZip();
@@ -57,7 +57,9 @@ for (const [label, filename] of [['Fang', process.env.MOCOF_FANG_XLSX], ['Yang',
     assert.deepEqual(Object.keys(after.files).sort(), Object.keys(before.files).sort());
     for (const [name, entry] of Object.entries(before.files)) if (!entry.dir && name !== sheets[0].id)
       assert.deepEqual(await after.file(name)!.async('nodebuffer'), await entry.async('nodebuffer'), name);
-    const result = await runSourceRecipe(raw, 'source.xlsx', 3, { name: 'Acceptance test', address: 'Test address', sqft: 1200, budget: 50000, currency: 'MYR' }, { planner: async context => ({
+    // This no-op planner checks preservation, not completed quotation pricing.
+    // Production finalization requires the real recipe's inserted rows/columns.
+    const result = await executeSequentialRecipe(raw, 'source.xlsx', 3, { name: 'Acceptance test', address: 'Test address', sqft: 1200, budget: 50000, currency: 'MYR' }, { planner: async context => ({
       stepId: context.step.id, status: context.step.text.includes('CustomerName') ? 'ready' : 'no_change', reason: 'Preservation fixture planner, not a live Gemini result.',
       operations: context.step.text.includes('CustomerName') ? [{ kind: 'set', sheetName: context.sheets[0].name, address: 'F2', value: 'Acceptance test', evidence: 'CustomerName' }] : [],
     }) });
