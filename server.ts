@@ -1,3 +1,4 @@
+import {validateAreaSelection} from './server/areaSelection.js';
 import 'dotenv/config';
 import {resumePersistentConversionJob, browserConversionResult, readJobExport} from './server/persistentJobs.js';
 import {validatePricingFactors} from './server/pricingFactors.js';
@@ -224,6 +225,8 @@ export async function createApp() {
       const selectedArea = Number(input.selectedArea);
       if (!String(input.customerName || '').trim() || !String(input.projectAddress || '').trim() || !Number.isFinite(Number(input.customerSqft)) || Number(input.customerSqft) <= 0 || !Number.isFinite(Number(input.customerBudget)) || Number(input.customerBudget) < 0) return res.status(400).json({ error: 'Customer name, address, positive sqft and nonnegative budget are required.' });
       if (!Number.isInteger(selectedArea) || selectedArea < 1 || selectedArea > 10) return res.status(400).json({ error: 'Choose Area 1–10 before starting the conversion job.' });
+      try { await validateAreaSelection(req.file.buffer, selectedArea); }
+      catch (error: any) { return res.status(400).json({error: error.message}); }
       const job = await createPersistentConversionJob(req.file.buffer, req.file.originalname, req.file.mimetype, {
         ...input, selectedArea, customerSqft: Number(input.customerSqft), customerBudget: Number(input.customerBudget),
       });

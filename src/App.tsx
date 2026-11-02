@@ -131,6 +131,9 @@ export default function App() {
     const id=localStorage.getItem('mocof-last-job'); if(!id)return;
     setIsProcessing(true);setConversionError(null);
     try {
+      const saved = await api.getPersistentConversionJob(id);
+      if (saved.job.status !== 'failed') { await watchJob(id); return; }
+      if (!/quota|429|503|504|unavailable|timeout|timed out|network|fetch|connection/i.test(saved.job.error || '')) throw Error(saved.job.error || 'This conversion needs a source or Area correction. Choose the correct Area and upload again.');
       const response=await fetch(`/api/conversion-jobs/${id}/resume`,{method:'POST'});
       const result=await response.json();if(!response.ok)throw Error(result.error || 'Could not resume job.');
       await watchJob(id);

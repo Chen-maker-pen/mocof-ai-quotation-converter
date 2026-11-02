@@ -1,3 +1,4 @@
+import {readJobResponse} from './jobConnection.js';
 /**
  * Frontend API Service Client for MOCOF AI Integrated Quotation Converter
  */
@@ -98,14 +99,16 @@ export const api = {
     const formData = new FormData();
     formData.append('supplierFile', file);
     formData.append('projectData', JSON.stringify(projectData));
-    const res = await fetch('/api/conversion-jobs', { method: 'POST', body: formData });
+    let res: Response;
+    try { res = await fetch('/api/conversion-jobs', { method: 'POST', body: formData }); }
+    catch { throw new Error('The connection was interrupted during upload. We could not confirm whether the conversion was queued. Check your connection before trying again.'); }
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `Could not queue conversion (HTTP ${res.status}).`);
     return body;
   },
 
   async getPersistentConversionJob(jobId: string): Promise<PersistentConversionJobResponse> {
-    const res = await fetch(`/api/conversion-jobs/${encodeURIComponent(jobId)}`, { cache: 'no-store' });
+    const res = await readJobResponse(`/api/conversion-jobs/${encodeURIComponent(jobId)}`);
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `Could not check conversion job (HTTP ${res.status}).`);
     return body;

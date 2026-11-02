@@ -267,13 +267,12 @@ export const UploadView: React.FC<UploadViewProps> = ({
           <p className="text-sm font-bold text-red-900">Conversion did not complete</p>
           <p className="mt-1 break-words text-sm leading-6 text-red-800">{conversionError}</p>
           <p className="mt-2 text-xs leading-5 text-red-700">
-            Use an .xlsx below 4 MB. A Gemini 503 means temporary service unavailability; it does not mean your
-            <code className="mx-1 rounded bg-red-100 px-1">GEMINI_API_KEY</code> is invalid. Project conversions check the source layout before applying the selected Area rules.
+            Use the Area matching the rooms in your source workbook. If the connection was interrupted, check the saved conversion before starting another upload.
           </p>
         </div>
       )}
 
-      {!isProcessing && conversionError && onResumeSavedJob && <button onClick={onResumeSavedJob} className="rounded bg-blue-800 px-4 py-2 text-white">Resume saved job (after quota resets if limited)</button>}
+      {!isProcessing && conversionError && onResumeSavedJob && <button onClick={onResumeSavedJob} className="rounded bg-blue-800 px-4 py-2 text-white">Check saved conversion</button>}
       {!isProcessing && <p className="text-center text-xs text-slate-500">Step 3: the selected Area recipe converts the quotation. Then review and download PDF or Excel.</p>}
 
       {/* Real-Time Processing Progress Panel */}
